@@ -14,10 +14,19 @@
   "contributes": {
     "commands": [
       {
-        "command": "patchwork.helloWorld",
-        "title": "Hello World"
+        "command": "patchwork.openCommitComposer",
+        "title": "Open Commit Composer",
+        "icon": "$(git-commit)"
       }
-    ]
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "patchwork.openCommitComposer",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",

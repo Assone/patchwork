@@ -1,10 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./main.css";
-
-function App() {
-  return <div>Patchwork Commit Composer</div>;
-}
+import App from "./App";
 
 const rootElement = document.getElementById("root");
 

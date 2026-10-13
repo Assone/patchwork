@@ -36,7 +36,7 @@ export default defineConfig({
     },
   ],
   resolve: {
-    extensions: [".tsx", ".ts", ".jsx", ".js", ".mjs", "..."],
+    extensions: [".tsx", ".ts", "..."],
   },
   module: {
     rules: [
@@ -61,10 +61,13 @@ export default defineConfig({
         use: ["postcss-loader"],
         type: "css",
       },
+      {
+        test: /\.html$/,
+        type: "asset/source",
+      },
     ],
   },
   plugins: [isDoctor && new RsdoctorRspackPlugin()],
-  lazyCompilation: true,
   devtool: "nosources-source-map",
   infrastructureLogging: {
     level: "log",
