@@ -58,12 +58,7 @@ export default defineConfig({
       },
     ],
   },
-  plugins: [
-    isDoctor &&
-      new RsdoctorRspackPlugin({
-        // plugin options
-      }),
-  ],
+  plugins: [isDoctor && new RsdoctorRspackPlugin()],
   devtool: "nosources-source-map",
   infrastructureLogging: {
     level: "log",
