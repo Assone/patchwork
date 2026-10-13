@@ -1,0 +1,14 @@
+.vscode/**
+.vscode-test/**
+out/**
+node_modules/**
+src/**
+.gitignore
+.yarnrc
+rspack.config.mts
+**/tsconfig.json
+**/*.map
+**/*.ts
+**/.vscode-test.*
+.oxfmtrc.json
+.oxlintrc.json
