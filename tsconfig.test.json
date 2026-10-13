@@ -2,9 +2,11 @@
   "extends": "./tsconfig.node.json",
   "compilerOptions": {
     "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
     "rootDir": "./src",
     "outDir": "./out",
     "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
     "types": ["node", "mocha"]
   },
   "include": ["src/test/**/*.ts"],
