@@ -1,26 +1,45 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
+import { Layer, ManagedRuntime } from "effect";
+import * as vscode from "vscode";
+import { GitServiceLive } from "./infrastructure/git-live";
+import { LoggerServiceLive } from "./infrastructure/log-live";
+import { RepositoryServiceLive } from "./infrastructure/repository-live";
+import { SecretServiceLive } from "./infrastructure/secret-live";
+import { VSCodeServiceLive } from "./infrastructure/vscode-live";
+import { type API as GitAPI, type GitExtension } from "./types/git";
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+export const getGitAPI = async (): Promise<GitAPI> => {
+  const extension = vscode.extensions.getExtension<GitExtension>("vscode.git");
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "patchwork" is now active!');
+  if (!extension) {
+    throw new Error("VS Code Git extension is not available");
+  }
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('patchwork.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from patchwork!');
-	});
+  const gitExtension = extension.isActive ? extension.exports : await extension.activate();
 
-	context.subscriptions.push(disposable);
+  return gitExtension.getAPI(1);
+};
+
+export async function activate(context: vscode.ExtensionContext) {
+  const git = await getGitAPI();
+
+  const logger = vscode.window.createOutputChannel("Patchwork", {
+    log: true,
+  });
+
+  const AppLive = Layer.mergeAll(
+    LoggerServiceLive(logger),
+    SecretServiceLive(context),
+    GitServiceLive,
+    RepositoryServiceLive(git),
+    VSCodeServiceLive,
+  );
+  const runtime = ManagedRuntime.make(AppLive);
+
+  const disposable = vscode.commands.registerCommand("patchwork.helloWorld", () => {
+    vscode.window.showInformationMessage("Hello World from patchwork!");
+  });
+
+  context.subscriptions.push(disposable);
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {}

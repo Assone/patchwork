@@ -22,26 +22,30 @@ export default defineConfig({
     clean: true,
     path: resolve(import.meta.dirname, "dist"),
   },
-  externals: {
-    vscode: "commonjs vscode",
+  externals: [
+    {
+      vscode: "commonjs vscode",
+    },
+    ({ request }, callback) => {
+      if (request?.startsWith("node:")) {
+        callback(null, `node-commonjs ${request}`);
+        return;
+      }
+
+      callback();
+    },
+  ],
+  resolve: {
+    extensions: [".tsx", ".ts", ".jsx", ".js", ".mjs", "..."],
   },
   module: {
     rules: [
       {
-        test: /\.(?:js|mjs|ts)$/,
+        test: /\.(?:js|mjs|jsx|ts|tsx)$/,
         exclude: [/node_modules/],
         loader: "builtin:swc-loader",
         options: {
           detectSyntax: "auto",
-        },
-      },
-      {
-        test: /\.(?:js|mjs|jsx|ts|tsx)$/,
-        use: {
-          loader: "builtin:swc-loader",
-          options: {
-            detectSyntax: "auto",
-          },
         },
       },
     ],
