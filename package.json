@@ -34,6 +34,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
+    "@rsdoctor/rspack-plugin": "^1.6.5",
     "@rspack/cli": "^2.2.8",
     "@rspack/core": "^2.2.8",
     "@types/mocha": "^10.0.10",
@@ -55,6 +56,7 @@
     "*": "oxfmt --no-error-on-unmatched-pattern"
   },
   "dependencies": {
+    "effect": "^4.0.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   }
