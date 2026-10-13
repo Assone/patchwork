@@ -7,15 +7,19 @@ console.log(resolve(import.meta.dirname, "dist"));
 
 export default defineConfig({
   entry: {
-    main: "./src/extension.ts",
+    extension: {
+      import: "./src/extension.ts",
+      library: {
+        type: "commonjs2",
+      },
+    },
+    webview: {
+      import: "./src/webview/main.tsx",
+    },
   },
   output: {
     clean: true,
     path: resolve(import.meta.dirname, "dist"),
-    filename: "extension.js",
-    library: {
-      type: "commonjs2",
-    },
   },
   externals: {
     vscode: "commonjs vscode",
@@ -28,6 +32,15 @@ export default defineConfig({
         loader: "builtin:swc-loader",
         options: {
           detectSyntax: "auto",
+        },
+      },
+      {
+        test: /\.(?:js|mjs|jsx|ts|tsx)$/,
+        use: {
+          loader: "builtin:swc-loader",
+          options: {
+            detectSyntax: "auto",
+          },
         },
       },
     ],
