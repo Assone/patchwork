@@ -56,9 +56,15 @@ export default defineConfig({
           },
         },
       },
+      {
+        test: /\.css$/,
+        use: ["postcss-loader"],
+        type: "css",
+      },
     ],
   },
   plugins: [isDoctor && new RsdoctorRspackPlugin()],
+  lazyCompilation: true,
   devtool: "nosources-source-map",
   infrastructureLogging: {
     level: "log",
