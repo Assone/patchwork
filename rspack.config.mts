@@ -4,7 +4,7 @@ import { defineConfig } from "@rspack/cli";
 import { resolve } from "node:path";
 import { RsdoctorRspackPlugin } from "@rsdoctor/rspack-plugin";
 
-console.log(resolve(import.meta.dirname, "dist"));
+const isDoctor = process.env.RSDOCTOR === "true";
 
 export default defineConfig({
   entry: {
@@ -46,16 +46,24 @@ export default defineConfig({
         loader: "builtin:swc-loader",
         options: {
           detectSyntax: "auto",
+          jsc: {
+            transform: {
+              react: {
+                runtime: "automatic",
+              },
+              reactCompiler: true,
+            },
+          },
         },
       },
     ],
   },
   plugins: [
-    process.env.RSDOCTOR &&
+    isDoctor &&
       new RsdoctorRspackPlugin({
         // plugin options
       }),
-  ].filter(Boolean),
+  ],
   devtool: "nosources-source-map",
   infrastructureLogging: {
     level: "log",
