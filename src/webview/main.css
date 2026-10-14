@@ -1,1 +1,79 @@
 @import "tailwindcss";
+
+@theme inline {
+  /* Fonts */
+  --font-ui: var(--vscode-font-family, system-ui, sans-serif);
+  --font-editor: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+
+  /* Surfaces */
+  --color-background: var(--vscode-editor-background);
+  --color-background-sidebar: var(--vscode-sideBarBackground);
+  --color-border: var(--vscode-editorWidget-border, transparent);
+
+  /* Foreground (text) */
+  --color-foreground: var(--vscode-foreground);
+  --color-foreground-muted: var(--vscode-descriptionForeground);
+
+  /* List rows */
+  --color-row-hover: var(--vscode-list-hoverBackground);
+  --color-row-active: var(--vscode-list-activeSelectionBackground);
+  --color-row-active-foreground: var(--vscode-list-activeSelectionForeground);
+  --color-focus-border: var(--vscode-focusBorder);
+
+  /* Form controls */
+  --color-input-background: var(--vscode-input-background);
+  --color-input-foreground: var(--vscode-input-foreground);
+  --color-input-border: var(--vscode-input-border, transparent);
+  --color-checkbox-border: var(--vscode-checkbox-border, #6b6b6b);
+
+  /* Buttons */
+  --color-button-background: var(--vscode-button-background);
+  --color-button-foreground: var(--vscode-button-foreground);
+  --color-button-hover: var(--vscode-button-hoverBackground);
+  --color-button-secondary-background: var(--vscode-button-secondaryBackground, #3a3d41);
+  --color-button-secondary-foreground: var(--vscode-button-secondaryForeground, #cccccc);
+
+  /* Diff editor */
+  --color-diff-insert-background: var(
+    --vscode-diffEditor-insertedTextBackground,
+    rgba(155, 185, 85, 0.2)
+  );
+  --color-diff-delete-background: var(
+    --vscode-diffEditor-removedTextBackground,
+    rgba(255, 0, 0, 0.2)
+  );
+  --color-diff-gutter-foreground: var(--vscode-diffEditorGutter-foreground, rgba(0, 0, 0, 0.4));
+  --color-diff-line-foreground: var(--vscode-editor-foreground);
+  --color-diff-line-number-foreground: var(--vscode-editorLineNumber-foreground);
+  --color-diff-line-number-active-foreground: var(--vscode-editorLineNumber-activeForeground);
+
+  /* Git decorations — file-tree status text colour. */
+  --color-badge-added: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+  --color-badge-modified: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+  --color-badge-deleted: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+  --color-badge-untracked: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991);
+}
+
+/*
+ * A few non-namespace tokens that we still need as raw CSS variables:
+ *   - `--header-h` is consumed by inline styles (height) where Tailwind
+ *     classes would be awkward.
+ *   - `--header-fg` is the colour used by header strips above content
+ *     panes; defining it here keeps the two header strips aligned.
+ */
+:root {
+  --header-h: 26px;
+  --header-fg: var(--vscode-descriptionForeground);
+}
+
+/* Webview root picks up theme colours directly. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-background-sidebar);
+  color: var(--color-foreground);
+  font-family: var(--font-ui);
+  font-size: 13px;
+}

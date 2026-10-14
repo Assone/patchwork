@@ -12,5 +12,8 @@
     "curly": "warn",
     "eqeqeq": "warn",
     "no-throw-literal": "warn"
+  },
+  "options": {
+    "typeAware": true
   }
 }

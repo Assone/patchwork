@@ -1,7 +1,19 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { RouterProvider, createHashHistory, createRouter } from "@tanstack/react-router";
+import { routeTree } from "./routeTree.gen";
 import "./main.css";
-import App from "./App";
+
+const router = createRouter({
+  routeTree,
+  history: createHashHistory(),
+});
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    readonly router: typeof router;
+  }
+}
 
 const rootElement = document.getElementById("root");
 
@@ -11,6 +23,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <RouterProvider router={router} />
   </StrictMode>,
 );

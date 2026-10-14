@@ -7,6 +7,7 @@ import { SecretServiceLive } from "./infrastructure/secret-live";
 import { VSCodeServiceLive } from "./infrastructure/vscode-live";
 import { type API as GitAPI, type GitExtension } from "./types/git";
 import template from "./webview/index.html";
+import path from "node:path";
 
 export async function activate(context: vscode.ExtensionContext) {
   const isDev = context.extensionMode === vscode.ExtensionMode.Development;
@@ -31,7 +32,11 @@ export async function activate(context: vscode.ExtensionContext) {
         "patchwork.commitComposer", // viewType
         "Commit Composer", // 标题
         vscode.ViewColumn.One,
-        { enableScripts: true, retainContextWhenHidden: true },
+        {
+          localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, "dist"))],
+          enableScripts: true,
+          retainContextWhenHidden: true,
+        },
       );
 
       if (isDev) {

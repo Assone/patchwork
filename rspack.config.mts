@@ -3,6 +3,7 @@
 import { defineConfig } from "@rspack/cli";
 import { resolve } from "node:path";
 import { RsdoctorRspackPlugin } from "@rsdoctor/rspack-plugin";
+import { tanstackRouter } from "@tanstack/router-plugin/rspack";
 
 const isDoctor = process.env.RSDOCTOR === "true";
 
@@ -67,7 +68,14 @@ export default defineConfig({
       },
     ],
   },
-  plugins: [isDoctor && new RsdoctorRspackPlugin()],
+  plugins: [
+    isDoctor && new RsdoctorRspackPlugin(),
+    tanstackRouter({
+      target: "react",
+      routesDirectory: "./src/webview/routes",
+      generatedRouteTree: "./src/webview/routeTree.gen.ts",
+    }),
+  ],
   devtool: "nosources-source-map",
   infrastructureLogging: {
     level: "log",
