@@ -5,7 +5,7 @@ import { CommitList } from "./CommitList";
 import { DiffAccordion } from "./DiffAccordion";
 import { MessageEditor } from "./MessageEditor";
 
-interface ReviewBodyProps {
+export interface ReviewBodyProps {
   readonly commits: readonly Commit[];
   readonly confirming: boolean;
   readonly onConfirm: (commits: readonly Commit[]) => void;
@@ -13,13 +13,13 @@ interface ReviewBodyProps {
   readonly onRegenerate: () => void;
 }
 
-export function ReviewBody({
+export const ReviewBody: React.FC<ReviewBodyProps> = ({
   commits,
   confirming,
   onConfirm,
   onCancel,
   onRegenerate,
-}: ReviewBodyProps) {
+}) => {
   const focusedCommit = useFocusedCommitContext();
   const focused = commits.find((c) => c.id === focusedCommit.id) ?? commits[0];
 
@@ -67,4 +67,4 @@ export function ReviewBody({
       </aside>
     </div>
   );
-}
+};

@@ -12,11 +12,15 @@ import { useSubmission, type UseSubmission } from "./hooks/useSubmission";
  */
 const SubmissionContext = createContext<UseSubmission | null>(null);
 
-export function SubmissionProvider({ children }: { readonly children: ReactNode }) {
+export interface SubmissionProviderProps {
+  readonly children: ReactNode;
+}
+
+export const SubmissionProvider: React.FC<SubmissionProviderProps> = ({ children }) => {
   return (
     <SubmissionContext.Provider value={useSubmission()}>{children}</SubmissionContext.Provider>
   );
-}
+};
 
 /** Throws when used outside the provider — the dependency is hard. */
 export function useSubmissionContext(): UseSubmission {

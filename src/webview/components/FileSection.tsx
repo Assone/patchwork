@@ -3,7 +3,11 @@ import { getMockDiff } from "../mocks/diffs";
 import { Chevron } from "./Chevron";
 import { DiffBody } from "./DiffBody";
 
-export function FileSection({ path }: { readonly path: string }) {
+export interface FileSectionProps {
+  readonly path: string;
+}
+
+export const FileSection: React.FC<FileSectionProps> = ({ path }) => {
   const [collapsed, setCollapsed] = useState(false);
   const diff = getMockDiff(path);
 
@@ -24,4 +28,4 @@ export function FileSection({ path }: { readonly path: string }) {
       )}
     </section>
   );
-}
+};

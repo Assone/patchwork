@@ -2,15 +2,7 @@ import type { Commit } from "../hooks/useSubmission";
 import { Button } from "./Button";
 import { Spinner } from "./Spinner";
 
-export function MessageEditor({
-  commit,
-  editingMessage,
-  confirming,
-  onEdit,
-  onCancel,
-  onRegenerate,
-  onCommit,
-}: {
+export interface MessageEditorProps {
   readonly commit: Commit;
   readonly editingMessage: string;
   readonly confirming: boolean;
@@ -18,7 +10,17 @@ export function MessageEditor({
   readonly onCancel: () => void;
   readonly onRegenerate: () => void;
   readonly onCommit: () => void;
-}) {
+}
+
+export const MessageEditor: React.FC<MessageEditorProps> = ({
+  commit,
+  editingMessage,
+  confirming,
+  onEdit,
+  onCancel,
+  onRegenerate,
+  onCommit,
+}) => {
   return (
     <div className="flex flex-1 flex-col">
       <div
@@ -73,4 +75,4 @@ export function MessageEditor({
       </div>
     </div>
   );
-}
+};

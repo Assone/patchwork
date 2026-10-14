@@ -1,10 +1,10 @@
 import { FileSection } from "./FileSection";
 
-export function DiffAccordion({
-  files,
-}: {
+export interface DiffAccordionProps {
   readonly files: readonly { readonly path: string; readonly type: string }[];
-}) {
+}
+
+export const DiffAccordion: React.FC<DiffAccordionProps> = ({ files }) => {
   if (files.length === 0) {
     return (
       <div className="text-foreground-muted flex h-full items-center justify-center">
@@ -20,4 +20,4 @@ export function DiffAccordion({
       ))}
     </div>
   );
-}
+};

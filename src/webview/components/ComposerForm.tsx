@@ -1,19 +1,21 @@
 import { cn } from "../utils/cn";
 import { Button } from "./Button";
 
-export function ComposerForm({
-  disabled,
-  onSubmit,
-  errorReason,
-  prompt,
-  setPrompt,
-}: {
+export interface ComposerFormProps {
   readonly disabled: boolean;
   readonly onSubmit: () => void;
   readonly errorReason: string | null;
   readonly prompt: string;
   readonly setPrompt: (value: string) => void;
-}) {
+}
+
+export const ComposerForm: React.FC<ComposerFormProps> = ({
+  disabled,
+  onSubmit,
+  errorReason,
+  prompt,
+  setPrompt,
+}) => {
   return (
     <div className="border-border flex flex-col border-t">
       {errorReason !== null && (
@@ -65,4 +67,4 @@ export function ComposerForm({
       </form>
     </div>
   );
-}
+};

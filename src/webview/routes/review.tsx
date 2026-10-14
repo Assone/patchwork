@@ -4,7 +4,7 @@ import { useFocusedCommitContext } from "../focused-commit-context";
 import { useSubmissionContext } from "../submission-context";
 import { Button } from "../components/Button";
 import { ReviewBody } from "../components/ReviewBody";
-import { Spinner } from "../components/Spinner";
+import { WaitingScreen } from "../components/WaitingScreen";
 
 /**
  * `/review` — the workbench after commits have been drafted.
@@ -39,7 +39,7 @@ function ReviewView() {
   }, [status, navigate]);
 
   if (status.kind === "submitting") {
-    return <DraftingScreen />;
+    return <WaitingScreen />;
   }
 
   if (status.kind === "error") {
@@ -81,24 +81,13 @@ function ReviewView() {
   );
 }
 
-function DraftingScreen() {
-  return (
-    <div className="bg-background-sidebar text-foreground-muted flex h-screen flex-col items-center justify-center gap-3">
-      <Spinner size={20} />
-      <span className="text-xs">Drafting commits…</span>
-    </div>
-  );
-}
-
-function ErrorScreen({
-  reason,
-  onBack,
-  onRetry,
-}: {
+interface ErrorScreenProps {
   readonly reason: string;
   readonly onBack: () => void;
   readonly onRetry?: () => void;
-}) {
+}
+
+const ErrorScreen: React.FC<ErrorScreenProps> = ({ reason, onBack, onRetry }) => {
   return (
     <div className="bg-background-sidebar flex h-screen flex-col items-center justify-center gap-4 p-4 text-center">
       <div
@@ -128,4 +117,4 @@ function ErrorScreen({
       </div>
     </div>
   );
-}
+};

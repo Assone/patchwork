@@ -14,7 +14,7 @@ export interface DiffViewProps {
   readonly diff: Diff | undefined;
 }
 
-function DiffViewImpl({ path, diff }: DiffViewProps) {
+const DiffViewImpl: React.FC<DiffViewProps> = ({ path, diff }) => {
   return (
     <div className="border-border bg-background flex flex-1 flex-col overflow-hidden border-r">
       <header
@@ -38,6 +38,11 @@ function DiffViewImpl({ path, diff }: DiffViewProps) {
       )}
     </div>
   );
-}
+};
 
+/**
+ * `memo` keeps the diff pane from re-rendering while the message
+ * textarea updates on every keystroke — its props change only when the
+ * focused path or its diff actually changes.
+ */
 export const DiffView = memo(DiffViewImpl);

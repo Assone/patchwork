@@ -1,10 +1,14 @@
+import { memo } from "react";
+
 /**
  * Header for the file list: shows how many files are selected and offers
  * bulk actions.
  *
  * The header is presentational — it receives `count` and `total` as
- * primitives plus two stable callbacks, so it never re-renders unless
- * one of those actually changes.
+ * primitives plus two stable callbacks, so `memo` keeps it from
+ * re-rendering on every keystroke in the prompt textarea. Both
+ * callbacks are `useCallback`-wrapped at the call site; a fresh arrow
+ * function passed as a prop would defeat the memo.
  */
 export interface SelectionHeaderProps {
   readonly count: number;
@@ -13,7 +17,12 @@ export interface SelectionHeaderProps {
   readonly onClear: () => void;
 }
 
-export function SelectionHeader({ count, total, onSelectAll, onClear }: SelectionHeaderProps) {
+export const SelectionHeader: React.FC<SelectionHeaderProps> = memo(function SelectionHeader({
+  count,
+  total,
+  onSelectAll,
+  onClear,
+}) {
   const allSelected = total > 0 && count === total;
 
   return (
@@ -44,4 +53,4 @@ export function SelectionHeader({ count, total, onSelectAll, onClear }: Selectio
       </span>
     </div>
   );
-}
+});

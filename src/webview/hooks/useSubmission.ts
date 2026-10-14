@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * One proposed commit, generated server-side from the user's selection.
@@ -92,56 +92,119 @@ function mockGenerate(request: SubmitRequest): readonly Commit[] {
  * the hook, so the routes can never disagree about what the user is
  * currently looking at. Status itself is a discriminated union so the
  * call site narrows automatically.
+ *
+ * Both async steps are modelled as a single in-flight timer held in a
+ * ref, which buys three things at once:
+ *
+ *   - a new request supersedes the previous one, so a stale response can
+ *     never win a race,
+ *   - unmounting clears the timer, so a late callback can never call
+ *     `setStatus` on a dead component, and
+ *   - cancelling drops the in-flight request outright rather than racing
+ *     it.
+ *
+ * `statusRef` mirrors the rendered status purely so the transition
+ * guards can read it synchronously. That indirection is what lets those
+ * guards stay outside `setStatus`'s updater — an updater must be pure,
+ * because StrictMode invokes it twice and a `setTimeout` placed there
+ * would register the timer twice.
  */
 export function useSubmission(): UseSubmission {
   const [status, setStatus] = useState<SubmissionStatus>({ kind: "idle" });
   // Stash the most recent request so `retry` can replay it. Held in a
   // ref so updating it doesn't trigger a re-render.
   const lastRequestRef = useRef<SubmitRequest | null>(null);
+  // The one in-flight mock request, if any. Overwriting the ref cancels
+  // the previous request implicitly — see `schedule`.
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest status, readable synchronously from inside a callback.
+  const statusRef = useRef<SubmissionStatus>(status);
 
-  const generate = useCallback((request: SubmitRequest) => {
-    lastRequestRef.current = request;
-    setStatus({ kind: "submitting" });
-    // Mock: 20% failure, latency 1.5–3s.
-    const delay = 1500 + Math.random() * 1500;
-    setTimeout(() => {
-      if (Math.random() < 0.2) {
-        const reasons = [
-          "pre-commit hook failed",
-          "permission denied: index.lock",
-          "CONFLICT (content): Merge conflict in App.tsx",
-          "nothing to commit, working tree clean",
-        ];
-        const reason = reasons[Math.floor(Math.random() * reasons.length)];
-        setStatus({ kind: "error", reason });
-        return;
-      }
-      setStatus({
-        kind: "reviewing",
-        commits: mockGenerate(request),
-      });
+  // Single funnel for every state transition, keeping `statusRef` in
+  // lockstep with the rendered value.
+  const transition = useCallback((next: SubmissionStatus) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
+
+  const schedule = useCallback((run: () => void, delay: number) => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+    }
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      run();
     }, delay);
   }, []);
 
-  const confirm = useCallback((commits: readonly Commit[]) => {
-    setStatus((current) => {
-      if (current.kind !== "reviewing") {
-        return current;
+  // Drop the pending request when the provider unmounts (a route change
+  // can unmount the whole tree). Without this the timer would fire into
+  // an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
+  const generate = useCallback(
+    (request: SubmitRequest) => {
+      lastRequestRef.current = request;
+      transition({ kind: "submitting" });
+      // Mock: 20% failure, latency 1.5–3s.
+      const delay = 1500 + Math.random() * 1500;
+      schedule(() => {
+        if (Math.random() < 0.2) {
+          const reasons = [
+            "pre-commit hook failed",
+            "permission denied: index.lock",
+            "CONFLICT (content): Merge conflict in App.tsx",
+            "nothing to commit, working tree clean",
+          ];
+          const reason = reasons[Math.floor(Math.random() * reasons.length)];
+          transition({ kind: "error", reason });
+          return;
+        }
+        transition({
+          kind: "reviewing",
+          commits: mockGenerate(request),
+        });
+      }, delay);
+    },
+    [schedule, transition],
+  );
+
+  const confirm = useCallback(
+    (commits: readonly Commit[]) => {
+      // Ignore a confirm that isn't arriving from `reviewing` — a
+      // double-click during `confirming`, say. The guard reads the ref
+      // because it has to run *before* scheduling the side effect.
+      if (statusRef.current.kind !== "reviewing") {
+        return;
       }
       // Move into a confirming state immediately so the Review page can
       // swap its CTA for a spinner; the actual commit happens after a
       // short mock latency.
-      setTimeout(() => {
+      transition({ kind: "confirming", commits });
+      schedule(() => {
         const hashes = commits.map(() => Math.random().toString(16).slice(2, 9));
-        setStatus({ kind: "done", hashes });
+        transition({ kind: "done", hashes });
       }, 1200);
-      return { kind: "confirming", commits };
-    });
-  }, []);
+    },
+    [schedule, transition],
+  );
 
   const cancel = useCallback(() => {
-    setStatus({ kind: "idle" });
-  }, []);
+    // Drop any in-flight request so a pending response can't resurrect
+    // the composer the user just left.
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    transition({ kind: "idle" });
+  }, [transition]);
 
   const retry = useCallback(() => {
     const request = lastRequestRef.current;

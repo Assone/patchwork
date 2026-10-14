@@ -14,7 +14,12 @@ export interface DiffBodyProps {
   readonly diff: Diff;
 }
 
-export const DiffBody = memo(function DiffBody({ diff }: DiffBodyProps) {
+/**
+ * Wrapped with `memo` so a parent rerender (e.g. typing in the message
+ * editor) doesn't re-walk the diff lines. The named inner function
+ * keeps the devtools label "DiffBody" instead of "Memo(Anonymous)".
+ */
+export const DiffBody: React.FC<DiffBodyProps> = memo(function DiffBody({ diff }) {
   const numbered = computeLineNumbers(diff);
 
   return (
@@ -57,14 +62,16 @@ function computeLineNumbers(diff: Diff) {
   });
 }
 
-const DiffLineRow = memo(function DiffLineRow({
-  line,
-  oldNumber,
-  newNumber,
-}: {
+interface DiffLineRowProps {
   readonly line: DiffLine;
   readonly oldNumber: number | null;
   readonly newNumber: number | null;
+}
+
+const DiffLineRow: React.FC<DiffLineRowProps> = memo(function DiffLineRow({
+  line,
+  oldNumber,
+  newNumber,
 }) {
   const rowClass =
     line.kind === "add"

@@ -9,7 +9,11 @@ interface UseFocusedCommit {
 
 const FocusedCommitContext = createContext<UseFocusedCommit | null>(null);
 
-export function FocusedCommitProvider({ children }: { readonly children: ReactNode }) {
+export interface FocusedCommitProviderProps {
+  readonly children: ReactNode;
+}
+
+export const FocusedCommitProvider: React.FC<FocusedCommitProviderProps> = ({ children }) => {
   const { id, focus, clear } = useFocus();
 
   return (
@@ -17,7 +21,7 @@ export function FocusedCommitProvider({ children }: { readonly children: ReactNo
       {children}
     </FocusedCommitContext.Provider>
   );
-}
+};
 
 export function useFocusedCommitContext(): UseFocusedCommit {
   const value = useContext(FocusedCommitContext);

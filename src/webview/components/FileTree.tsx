@@ -3,6 +3,7 @@ import { useTreeCollapse } from "../hooks/useTreeCollapse";
 import { buildFileTree, type TreeDir } from "../tree";
 import type { ChangedFile } from "../types";
 import { cn } from "../utils/cn";
+import { Chevron } from "./Chevron";
 
 /** Horizontal pixels added per nesting level. */
 const INDENT_PX = 10;
@@ -36,7 +37,13 @@ export interface FileTreeProps {
   readonly onFocus: (path: string) => void;
 }
 
-function FileTreeImpl({ files, selected, focusedPath, onToggle, onFocus }: FileTreeProps) {
+const FileTreeImpl: React.FC<FileTreeProps> = ({
+  files,
+  selected,
+  focusedPath,
+  onToggle,
+  onFocus,
+}) => {
   // Building the tree is O(files). Toggling a checkbox changes `selected`
   // but not `files`, so memoising on `files` keeps the tree identity
   // stable and lets `useTreeCollapse` skip re-flattening.
@@ -72,7 +79,7 @@ function FileTreeImpl({ files, selected, focusedPath, onToggle, onFocus }: FileT
       )}
     </ul>
   );
-}
+};
 
 export const FileTree = memo(FileTreeImpl);
 
@@ -92,7 +99,7 @@ interface DirRowProps {
   readonly onToggle: (dirPath: string) => void;
 }
 
-const DirRow = memo(function DirRow({ dir, collapsed, onToggle }: DirRowProps) {
+const DirRow: React.FC<DirRowProps> = memo(function DirRow({ dir, collapsed, onToggle }) {
   const handleClick = useCallback(() => onToggle(dir.path), [onToggle, dir.path]);
 
   return (
@@ -128,7 +135,7 @@ interface FileRowProps {
   readonly onFocus: (path: string) => void;
 }
 
-const FileRow = memo(function FileRow({
+const FileRow: React.FC<FileRowProps> = memo(function FileRow({
   name,
   file,
   depth,
@@ -136,7 +143,7 @@ const FileRow = memo(function FileRow({
   focused,
   onToggle,
   onFocus,
-}: FileRowProps) {
+}) {
   const checkboxId = useId();
   const { path, staged } = file;
   // Kept for assistive tech only — never rendered as visible text.
@@ -185,15 +192,13 @@ const FileRow = memo(function FileRow({
  * zero-size grid cell so the tick is always centred on the box, with no
  * dependence on a positioned ancestor.
  */
-const Checkbox = memo(function Checkbox({
-  id,
-  checked,
-  onChange,
-}: {
+interface CheckboxProps {
   readonly id: string;
   readonly checked: boolean;
   readonly onChange: () => void;
-}) {
+}
+
+const Checkbox: React.FC<CheckboxProps> = memo(function Checkbox({ id, checked, onChange }) {
   return (
     <span className="grid place-items-center">
       <input
@@ -230,30 +235,3 @@ const Checkbox = memo(function Checkbox({
     </span>
   );
 });
-
-/**
- * Rotating chevron used for directories. An SVG (rather than a `▸`/`▾`
- * glyph) keeps the shape crisp at any zoom and lets us transition it.
- */
-function Chevron({ expanded }: { readonly expanded: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 16 16"
-      className={cn(
-        "text-foreground-muted size-3 shrink-0",
-        "transition-transform duration-100",
-        expanded ? "rotate-90" : "rotate-0",
-      )}
-    >
-      <path
-        d="M6 4l4 4-4 4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}

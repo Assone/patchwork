@@ -1,6 +1,10 @@
 import { cn } from "../utils/cn";
 
-export const Chevron: React.FC<{ readonly expanded: boolean }> = ({ expanded }) => {
+export interface ChevronProps {
+  readonly expanded: boolean;
+}
+
+export const Chevron: React.FC<ChevronProps> = ({ expanded }) => {
   return (
     <svg
       aria-hidden

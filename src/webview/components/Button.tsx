@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, Ref } from "react";
 import { cn } from "../utils/cn";
 
 /**
@@ -13,11 +13,12 @@ import { cn } from "../utils/cn";
  * introducing a size axis before a second size exists would be
  * speculative.
  *
- * `forwardRef` keeps it usable inside future tooltip / popover wrappers
- * that need to anchor to the button element.
+ * In React 19, `ref` is a regular prop, so this component can stay an
+ * arrow function and still forward refs to the underlying `<button>`.
  */
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly variant?: "primary" | "secondary" | "ghost";
+  readonly ref?: Ref<HTMLButtonElement>;
 }
 
 const VARIANT: Record<NonNullable<ButtonProps["variant"]>, string> = {
@@ -36,10 +37,13 @@ const VARIANT: Record<NonNullable<ButtonProps["variant"]>, string> = {
   ),
 };
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "primary", className, type = "button", ...rest },
+export const Button: React.FC<ButtonProps> = ({
+  variant = "primary",
+  className,
+  type = "button",
   ref,
-) {
+  ...rest
+}) => {
   return (
     <button
       ref={ref}
@@ -54,4 +58,4 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {...rest}
     />
   );
-});
+};

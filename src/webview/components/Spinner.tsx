@@ -1,4 +1,8 @@
-export const Spinner: React.FC<{ readonly size?: number }> = ({ size = 16 }) => {
+export interface SpinnerProps {
+  readonly size?: number;
+}
+
+export const Spinner: React.FC<SpinnerProps> = ({ size = 16 }) => {
   return (
     <svg
       viewBox="0 0 24 24"

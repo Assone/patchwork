@@ -9,8 +9,8 @@ import { FileTree } from "../components/FileTree";
 import { SelectionHeader } from "../components/SelectionHeader";
 import { getMockDiff } from "../mocks/diffs";
 import { useFocus } from "../hooks/useFocus";
-import { Spinner } from "../components/Spinner";
 import { ComposerForm } from "../components/ComposerForm";
+import { WaitingScreen } from "../components/WaitingScreen";
 
 /**
  * `/` — the composer: message textarea + Generate Commit button.
@@ -36,6 +36,17 @@ function IndexView() {
 
   const diff = useMemo(() => (focus.id === null ? undefined : getMockDiff(focus.id)), [focus.id]);
 
+  // Stable so `SelectionHeader` can stay memoised: the file list only
+  // changes when `useChangedFiles` produces a new one, not on every
+  // keystroke in the prompt textarea.
+  const selectAllPaths = useMemo(
+    () => changedFiles.files.map((file) => file.path),
+    [changedFiles.files],
+  );
+  const handleSelectAll = useCallback(() => {
+    selection.replace(selectAllPaths);
+  }, [selection.replace, selectAllPaths]);
+
   const handleSubmit = useCallback(() => {
     if (selection.count === 0) {
       return;
@@ -48,7 +59,7 @@ function IndexView() {
   }, [prompt, selection, changedFiles, generate]);
 
   if (status.kind === "submitting") {
-    return <GeneratingScreen />;
+    return <WaitingScreen />;
   }
 
   return (
@@ -59,7 +70,7 @@ function IndexView() {
         <SelectionHeader
           count={selection.count}
           total={changedFiles.files.length}
-          onSelectAll={() => selection.replace(changedFiles.files.map((file) => file.path))}
+          onSelectAll={handleSelectAll}
           onClear={selection.clear}
         />
         <FileTree
@@ -77,15 +88,6 @@ function IndexView() {
           setPrompt={setPrompt}
         />
       </aside>
-    </div>
-  );
-}
-
-function GeneratingScreen() {
-  return (
-    <div className="bg-background-sidebar text-foreground-muted flex h-screen flex-col items-center justify-center gap-3">
-      <Spinner size={20} />
-      <span className="text-xs">Drafting commits…</span>
     </div>
   );
 }

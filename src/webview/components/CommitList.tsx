@@ -1,15 +1,13 @@
 import type { Commit } from "../hooks/useSubmission";
 import { cn } from "../utils/cn";
 
-export function CommitList({
-  commits,
-  focusedId,
-  onFocus,
-}: {
+export interface CommitListProps {
   readonly commits: readonly Commit[];
   readonly focusedId: string;
   readonly onFocus: (id: string) => void;
-}) {
+}
+
+export const CommitList: React.FC<CommitListProps> = ({ commits, focusedId, onFocus }) => {
   return (
     <div className="border-border flex flex-col border-b">
       <div
@@ -43,4 +41,4 @@ export function CommitList({
       </ul>
     </div>
   );
-}
+};
