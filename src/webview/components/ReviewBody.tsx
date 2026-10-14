@@ -8,14 +8,16 @@ import { MessageEditor } from "./MessageEditor";
 export interface ReviewBodyProps {
   readonly commits: readonly Commit[];
   readonly confirming: boolean;
+  readonly prompt: string;
   readonly onConfirm: (commits: readonly Commit[]) => void;
   readonly onCancel: () => void;
-  readonly onRegenerate: () => void;
+  readonly onRegenerate: (prompt: string) => void;
 }
 
 export const ReviewBody: React.FC<ReviewBodyProps> = ({
   commits,
   confirming,
+  prompt,
   onConfirm,
   onCancel,
   onRegenerate,
@@ -27,8 +29,16 @@ export const ReviewBody: React.FC<ReviewBodyProps> = ({
   // switching focus doesn't blow away unsaved edits elsewhere.
   const [edits, setEdits] = useState<Readonly<Record<string, string>>>({});
 
-  // Whenever the commits themselves change (a fresh review), reset the
-  // edit map so it doesn't leak across regenerations.
+  // The prompt shown in the editor footer. Seeded from the prompt that
+  // produced the current draft; the user can refine it across
+  // regenerations. We deliberately do NOT reset this on a fresh review
+  // — whatever the user typed stays put, so they can iterate on the
+  // prompt without losing what they wrote last time.
+  const [draftPrompt, setDraftPrompt] = useState(prompt);
+
+  // Whenever the commits themselves change (a fresh review), reset
+  // the edit map so per-commit edits don't leak across regenerations.
+  // `draftPrompt` is intentionally NOT reset — see above.
   useEffect(() => {
     setEdits({});
   }, [commits]);
@@ -45,6 +55,10 @@ export const ReviewBody: React.FC<ReviewBodyProps> = ({
     onConfirm(effective);
   }, [effective, onConfirm]);
 
+  const handleRegenerate = useCallback(() => {
+    onRegenerate(draftPrompt.trim());
+  }, [draftPrompt, onRegenerate]);
+
   return (
     <div className="bg-background flex h-screen">
       {/* LEFT: diff viewer (accordion over the focused commit's files). */}
@@ -58,10 +72,12 @@ export const ReviewBody: React.FC<ReviewBodyProps> = ({
         <MessageEditor
           commit={focused}
           editingMessage={edits[focused.id] ?? focused.message}
+          prompt={draftPrompt}
           confirming={confirming}
           onEdit={(message) => setEdits((current) => ({ ...current, [focused.id]: message }))}
+          onPromptChange={setDraftPrompt}
           onCancel={onCancel}
-          onRegenerate={onRegenerate}
+          onRegenerate={handleRegenerate}
           onCommit={handleCommit}
         />
       </aside>

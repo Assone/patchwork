@@ -17,19 +17,26 @@ export const Route = createFileRoute("/review")({
 });
 
 function ReviewView() {
-  const { status, generate, confirm, cancel, retry } = useSubmissionContext();
+  const { status, confirm, cancel, retry, regenerateAll } = useSubmissionContext();
   const focusedCommit = useFocusedCommitContext();
   const navigate = useNavigate();
 
-  const commits =
-    status.kind === "reviewing" || status.kind === "confirming" ? status.commits : null;
+  const draft =
+    status.kind === "reviewing" || status.kind === "confirming"
+      ? { commits: status.commits, prompt: status.prompt }
+      : null;
 
-  // Focus the first commit whenever a fresh review arrives.
+  // Focus the first commit whenever a fresh review arrives. Also
+  // recover if the previously-focused commit disappeared (e.g. after
+  // regenerate-all produced an entirely new set of ids).
   useEffect(() => {
-    if (commits && commits.length > 0 && focusedCommit.id === null) {
-      focusedCommit.focus(commits[0].id);
+    if (!draft || draft.commits.length === 0) {
+      return;
     }
-  }, [commits, focusedCommit]);
+    if (focusedCommit.id === null || !draft.commits.some((c) => c.id === focusedCommit.id)) {
+      focusedCommit.focus(draft.commits[0].id);
+    }
+  }, [draft, focusedCommit]);
 
   // Auto-navigate to /done once the commits have been written.
   useEffect(() => {
@@ -56,27 +63,22 @@ function ReviewView() {
     );
   }
 
-  if (!commits) {
+  if (!draft) {
     return null;
   }
 
   return (
     <ReviewBody
-      commits={commits}
+      commits={draft.commits}
       confirming={status.kind === "confirming"}
+      prompt={draft.prompt}
       onConfirm={(updated) => confirm(updated)}
       onCancel={() => {
         cancel();
         focusedCommit.reset();
         navigate({ to: "/", replace: true });
       }}
-      onRegenerate={() => {
-        const focused = commits.find((c) => c.id === focusedCommit.id) ?? commits[0];
-        generate({
-          message: "",
-          files: focused.files,
-        });
-      }}
+      onRegenerate={(prompt) => regenerateAll(prompt)}
     />
   );
 }

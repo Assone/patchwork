@@ -28,8 +28,13 @@ export interface Commit {
 export type SubmissionStatus =
   | { kind: "idle" }
   | { kind: "submitting" }
-  | { kind: "reviewing"; commits: readonly Commit[] }
-  | { kind: "confirming"; commits: readonly Commit[] }
+  /**
+   * `prompt` is the message the user originally submitted (or the most
+   * recent override they made via regenerate). The review view reads it
+   * to seed its prompt editor.
+   */
+  | { kind: "reviewing"; commits: readonly Commit[]; prompt: string }
+  | { kind: "confirming"; commits: readonly Commit[]; prompt: string }
   | { kind: "done"; hashes: readonly string[] }
   | { kind: "error"; reason: string };
 
@@ -43,6 +48,17 @@ export interface UseSubmission {
   readonly cancel: () => void;
   /** Re-runs the most recent generate() with the same request. */
   readonly retry: () => void;
+  /**
+   * Re-drafts every commit currently under review, using the *initial*
+   * submission's full file set rather than the server's per-commit
+   * partitions. Only callable from `reviewing` / `confirming`; otherwise
+   * a no-op. Local edits are discarded, matching `generate`'s contract.
+   *
+   * `prompt` is required — callers always know it because the review
+   * view owns a prompt input. It's the new message used for the
+   * re-draft; pass the previous prompt verbatim to keep it unchanged.
+   */
+  readonly regenerateAll: (prompt: string) => void;
 }
 
 export interface SubmitRequest {
@@ -111,8 +127,12 @@ function mockGenerate(request: SubmitRequest): readonly Commit[] {
  */
 export function useSubmission(): UseSubmission {
   const [status, setStatus] = useState<SubmissionStatus>({ kind: "idle" });
-  // Stash the most recent request so `retry` can replay it. Held in a
-  // ref so updating it doesn't trigger a re-render.
+  // Stash the most recent request so `retry` and `regenerateAll` can
+  // replay it. Held in a ref so updating it doesn't trigger a
+  // re-render. Always tracks the *initial* submission's file set —
+  // regenerate re-feeds the original request into mockGenerate rather
+  // than re-aggregating the server's partitions, so a fresh draft can
+  // actually re-partition.
   const lastRequestRef = useRef<SubmitRequest | null>(null);
   // The one in-flight mock request, if any. Overwriting the ref cancels
   // the previous request implicitly — see `schedule`.
@@ -170,6 +190,7 @@ export function useSubmission(): UseSubmission {
         transition({
           kind: "reviewing",
           commits: mockGenerate(request),
+          prompt: request.message,
         });
       }, delay);
     },
@@ -186,8 +207,9 @@ export function useSubmission(): UseSubmission {
       }
       // Move into a confirming state immediately so the Review page can
       // swap its CTA for a spinner; the actual commit happens after a
-      // short mock latency.
-      transition({ kind: "confirming", commits });
+      // short mock latency. The prompt carries over so a regenerate
+      // during confirming still knows what to draft from.
+      transition({ kind: "confirming", commits, prompt: statusRef.current.prompt });
       schedule(() => {
         const hashes = commits.map(() => Math.random().toString(16).slice(2, 9));
         transition({ kind: "done", hashes });
@@ -214,5 +236,29 @@ export function useSubmission(): UseSubmission {
     generate(request);
   }, [generate]);
 
-  return { status, generate, confirm, cancel, retry };
+  const regenerateAll = useCallback(
+    (prompt: string) => {
+      // Only valid while the user is looking at a draft — elsewhere the
+      // button isn't rendered, but a stale click must still be a no-op.
+      const current = statusRef.current;
+      if (current.kind !== "reviewing" && current.kind !== "confirming") {
+        return;
+      }
+      const request = lastRequestRef.current;
+      if (request === null) {
+        return;
+      }
+      // Re-use the initial files so the draft can re-partition them
+      // rather than re-aggregating the server's slices. The prompt is
+      // the caller's responsibility: the review view owns a prompt input
+      // and always passes its current value (including on no-op edits).
+      generate({
+        files: request.files,
+        message: prompt,
+      });
+    },
+    [generate],
+  );
+
+  return { status, generate, confirm, cancel, retry, regenerateAll };
 }
