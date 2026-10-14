@@ -35,7 +35,19 @@ export type SubmissionStatus =
    */
   | { kind: "reviewing"; commits: readonly Commit[]; prompt: string }
   | { kind: "confirming"; commits: readonly Commit[]; prompt: string }
-  | { kind: "done"; hashes: readonly string[] }
+  | {
+      kind: "done";
+      hashes: readonly string[];
+      /**
+       * Paths the generated commits actually covered. Used by the
+       * done page to decide whether there are still changes left in
+       * the workspace (`useChangedFiles` ⊃ `committedPaths` is false).
+       * We persist the paths rather than re-deriving them because the
+       * generator may have re-partitioned them in ways the route
+       * can't reconstruct.
+       */
+      readonly committedPaths: readonly string[];
+    }
   | { kind: "error"; reason: string };
 
 export interface UseSubmission {
@@ -212,7 +224,16 @@ export function useSubmission(): UseSubmission {
       transition({ kind: "confirming", commits, prompt: statusRef.current.prompt });
       schedule(() => {
         const hashes = commits.map(() => Math.random().toString(16).slice(2, 9));
-        transition({ kind: "done", hashes });
+        // Snapshot the set of paths the generated commits cover, in
+        // declaration order. The done page uses this to decide whether
+        // the workspace still has unstaged changes left to look at.
+        const committedPaths: string[] = [];
+        for (const commit of commits) {
+          for (const file of commit.files) {
+            committedPaths.push(file.path);
+          }
+        }
+        transition({ kind: "done", hashes, committedPaths });
       }, 1200);
     },
     [schedule, transition],
