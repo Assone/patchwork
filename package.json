@@ -22,7 +22,10 @@
     "test": "vscode-test"
   },
   "dependencies": {
+    "@shikijs/langs": "^4.5.0",
+    "@shikijs/themes": "^4.5.0",
     "@tailwindcss/postcss": "^4.3.3",
+    "@tanstack/react-query": "^5.104.2",
     "@tanstack/react-router": "^1.170.42",
     "clsx": "^2.1.1",
     "effect": "^4.0.3",
@@ -30,6 +33,7 @@
     "postcss-loader": "^8.2.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "shiki": "^4.5.0",
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.3",
     "zod": "^4.6.7"
