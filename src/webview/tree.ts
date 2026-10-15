@@ -1,4 +1,4 @@
-import type { ChangedFile } from "./types";
+import type { ChangedFile } from "../rpc/git-types";
 
 /**
  * A directory node in the changed-files tree.

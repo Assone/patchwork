@@ -1,4 +1,4 @@
-import type { ChangedFile } from "../types";
+import type { ChangedFile } from "../../rpc/git-types";
 
 /**
  * Mock changeset used while the real git integration is being built.

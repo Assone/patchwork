@@ -1,9 +1,10 @@
 import { memo, useCallback, useId, useMemo } from "react";
 import { useTreeCollapse } from "../hooks/useTreeCollapse";
 import { buildFileTree, type TreeDir } from "../tree";
-import type { ChangedFile } from "../types";
+
 import { cn } from "../utils/cn";
 import { Chevron } from "./Chevron";
+import type { ChangedFile } from "../../rpc/git-types";
 
 /** Horizontal pixels added per nesting level. */
 const INDENT_PX = 10;
