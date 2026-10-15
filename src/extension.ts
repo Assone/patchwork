@@ -1,4 +1,4 @@
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect, Layer, ManagedRuntime, Stream } from "effect";
 import * as vscode from "vscode";
 import { GitServiceLive } from "./infrastructure/git-live";
 import { LoggerServiceLive } from "./infrastructure/log-live";
@@ -14,6 +14,7 @@ import { SecretServiceLive } from "./infrastructure/secret-live";
 import { VSCodeServiceLive } from "./infrastructure/vscode-live";
 import { type API as GitAPI, type GitExtension } from "./types/git";
 import { GitService } from "./services/git";
+import type { HostApi, WebviewApi } from "./rpc/protocol";
 import { RepositoryService } from "./services/repository";
 import { VSCodeService } from "./services/vscode";
 import template from "./webview/index.html";
@@ -104,12 +105,16 @@ export async function activate(context: vscode.ExtensionContext) {
       // The observer matters: handler failures are answered to the
       // webview, so without it the host's log would show nothing at all
       // when something goes wrong on this side.
-      const client = createHostClient(
-        createHostTransport(createWebviewWire(panel.webview), {
-          includeErrorStacks: isDev,
-          observer: createLoggerObserver(runtime),
-        }),
-      );
+      const transport = createHostTransport(createWebviewWire(panel.webview), {
+        includeErrorStacks: isDev,
+        observer: createLoggerObserver(runtime),
+      });
+
+      // Two facades over one transport: the transport is symmetric, but
+      // the *contracts* differ per direction, so each facade type-checks
+      // against the right one.
+      const client = createHostClient<HostApi>(transport);
+      const notifier = createHostClient<WebviewApi>(transport);
       const registerRPCHandler = registerEffectHandler(client, runtime);
 
       registerRPCHandler("host.handshake", () =>
@@ -142,7 +147,33 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
       );
 
-      context.subscriptions.push(client);
+      // Push: tell the webview whenever the repository changes, so its
+      // cached reads are invalidated. Without this the UI only ever
+      // shows the snapshot it took at mount — staging a file from the
+      // VS Code source control view would never be reflected here.
+      //
+      // Detached because it must outlive the command that opened the
+      // panel and run for as long as the panel does. It is torn down
+      // with the panel below.
+      const pushFiber = runtime.runFork(
+        Effect.gen(function* () {
+          const repository = yield* RepositoryService;
+          yield* Stream.runForEach(repository.changes, (change) =>
+            Effect.sync(() => {
+              notifier.notify("repo.invalidate", { reason: change.reason });
+            }),
+          );
+        }),
+      );
+
+      // Tear the transport down with the *panel*, not the extension:
+      // `context.subscriptions` only fires on deactivate, so every
+      // open/close cycle would otherwise leave a fiber streaming changes
+      // into a dead webview and a live listener on a disposed panel.
+      panel.onDidDispose(() => {
+        pushFiber.interruptUnsafe();
+        client.dispose();
+      });
     }),
   );
 }

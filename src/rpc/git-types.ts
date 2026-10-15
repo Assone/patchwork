@@ -32,3 +32,13 @@ export interface ChangedFile {
 }
 
 export type DiffArea = "staged" | "unstaged";
+
+/**
+ * Why the repository changed, for the host's `repo.invalidate` push.
+ *
+ * Declared here — next to `ChangedFile`, in the module both bundles
+ * already share — so the host that produces it and the webview that
+ * switches on it cannot disagree about the vocabulary. Adding a reason
+ * is one edit, and any consumer with an exhaustive switch finds out.
+ */
+export type RepositoryChangeReason = "state" | "index" | "workingTree" | "closed" | "opened";

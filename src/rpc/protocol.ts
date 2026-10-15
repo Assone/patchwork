@@ -1,5 +1,5 @@
 import * as z from "zod";
-import type { ChangedFile } from "./git-types";
+import type { ChangedFile, RepositoryChangeReason } from "./git-types";
 
 /* ------------------------------------------------------------------ *
  * Frame schemas
@@ -566,5 +566,33 @@ export type HostApi = {
   readonly "git.getFileDiff": {
     readonly payload: { readonly path: string };
     readonly result: string;
+  };
+};
+
+/**
+ * Notifications the host sends *to* the webview — fire-and-forget, no
+ * reply. The webview is the handling side here.
+ *
+ * This is the push half of the data flow. Without it the webview can
+ * only ever show a snapshot taken at mount: if the user stages a file
+ * from the VS Code UI, nothing tells us to re-read the repository.
+ */
+export type WebviewApi = {
+  /**
+   * The repository changed and cached reads are stale.
+   *
+   * The payload carries only *why* — the webview is told *that* things
+   * changed and re-reads through the normal request methods. Pushing the
+   * new state here would mean serialising a whole file list into every
+   * notification.
+   *
+   * `reason` is the host's own union (see `./git-types`), not `string`,
+   * so a consumer that switches on it is checked against what the host
+   * can actually emit.
+   */
+  readonly "repo.invalidate": {
+    readonly payload: { readonly reason: RepositoryChangeReason };
+    /** Notifications have no reply channel, so there is no result. */
+    readonly result: void;
   };
 };

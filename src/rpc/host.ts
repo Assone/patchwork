@@ -7,6 +7,7 @@ import {
   parseWireFrame,
   type HostApi,
   type RpcClient,
+  type RpcContract,
   type Transport,
   type TransportObserver,
   type Wire,
@@ -108,7 +109,22 @@ export function createHostTransport(wire: Wire, options: HostTransportOptions = 
   });
 }
 
-export function createHostClient<T extends HostApi = HostApi>(transport: Transport): RpcClient<T> {
+/**
+ * A typed facade over the host's transport.
+ *
+ * The transport is symmetric — it serves requests *and* sends them — so
+ * the same instance is used in both directions. `T` selects which
+ * contract the calls are checked against:
+ *
+ * - `HostApi` for methods the host **serves** (`register`);
+ * - `WebviewApi` for notifications the host **sends** (`notify`).
+ *
+ * Splitting them by contract rather than by transport keeps the type
+ * checker from accepting a host method name in a `notify` call.
+ */
+export function createHostClient<T extends RpcContract = HostApi>(
+  transport: Transport,
+): RpcClient<T> {
   return createRpcClient<T>(transport);
 }
 

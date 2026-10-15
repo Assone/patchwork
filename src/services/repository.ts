@@ -1,4 +1,5 @@
 import { Context, Effect, Stream } from "effect";
+import type { RepositoryChangeReason } from "../rpc/git-types";
 
 export interface RepositoryInfo {
   readonly root: string;
@@ -6,7 +7,11 @@ export interface RepositoryInfo {
 
 export interface RepositoryChange {
   readonly repository: RepositoryInfo;
-  readonly reason: "state" | "index" | "workingTree" | "closed" | "opened";
+  /**
+   * The shared vocabulary — see `../rpc/git-types`. The webview switches
+   * on the same union, so the two sides can't drift.
+   */
+  readonly reason: RepositoryChangeReason;
 }
 
 export interface RepositoryServiceApi {
