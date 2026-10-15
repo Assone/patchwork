@@ -1,13 +1,48 @@
-import { Layer, ManagedRuntime } from "effect";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import * as vscode from "vscode";
 import { GitServiceLive } from "./infrastructure/git-live";
 import { LoggerServiceLive } from "./infrastructure/log-live";
 import { RepositoryServiceLive } from "./infrastructure/repository-live";
+import {
+  createHostClient,
+  createHostTransport,
+  createLoggerObserver,
+  createWebviewWire,
+  registerEffectHandler,
+} from "./rpc/host";
 import { SecretServiceLive } from "./infrastructure/secret-live";
 import { VSCodeServiceLive } from "./infrastructure/vscode-live";
 import { type API as GitAPI, type GitExtension } from "./types/git";
+import { GitService } from "./services/git";
+import { RepositoryService } from "./services/repository";
+import { VSCodeService } from "./services/vscode";
 import template from "./webview/index.html";
 import path from "node:path";
+
+/**
+ * The repository the webview is currently operating on.
+ *
+ * The webview has no filesystem or workspace access of its own, so the
+ * host is the authority on which repository is in play. Resolution
+ * order: an open git repository first, then the first workspace
+ * folder, so a plain folder without git still works.
+ */
+const getCurrentRepositoryRoot = Effect.fn("getCurrentRepositoryRoot")(function* () {
+  const repository = yield* RepositoryService;
+  const repositories = yield* repository.getRepositories;
+  const openRepository = repositories[0]?.root;
+  if (openRepository !== undefined) {
+    return openRepository;
+  }
+
+  const vsCode = yield* VSCodeService;
+  const workspaceFolders = yield* vsCode.getWorkspaceFolders();
+  const workspaceFolder = workspaceFolders[0];
+  if (workspaceFolder === undefined) {
+    throw new Error("No repository or workspace folder is open");
+  }
+  return workspaceFolder.uri.fsPath;
+});
 
 export async function activate(context: vscode.ExtensionContext) {
   const isDev = context.extensionMode === vscode.ExtensionMode.Development;
@@ -20,8 +55,8 @@ export async function activate(context: vscode.ExtensionContext) {
   const AppLive = Layer.mergeAll(
     LoggerServiceLive(logger),
     SecretServiceLive(context),
-    GitServiceLive,
     RepositoryServiceLive(git),
+    GitServiceLive,
     VSCodeServiceLive,
   );
   const runtime = ManagedRuntime.make(AppLive);
@@ -61,6 +96,50 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       panel.webview.html = getHtmlForWebview(context, panel.webview);
+
+      // Expose the host's Effect services to the webview over RPC. The
+      // webview calls `git.getChangedFiles(...)` and awaits a plain
+      // Promise; the Effect never leaves this process.
+      //
+      // The observer matters: handler failures are answered to the
+      // webview, so without it the host's log would show nothing at all
+      // when something goes wrong on this side.
+      const client = createHostClient(
+        createHostTransport(createWebviewWire(panel.webview), {
+          includeErrorStacks: isDev,
+          observer: createLoggerObserver(runtime),
+        }),
+      );
+      const registerRPCHandler = registerEffectHandler(client, runtime);
+
+      registerRPCHandler("host.handshake", () =>
+        Effect.gen(function* () {
+          const vsCode = yield* VSCodeService;
+          const workspaceFolders = (yield* vsCode.getWorkspaceFolders()).map(
+            (folder) => folder.uri.fsPath,
+          );
+          const repositoryRoot = yield* getCurrentRepositoryRoot();
+          return { repositoryRoot, workspaceFolders };
+        }),
+      );
+      registerRPCHandler("git.getChangedFiles", () =>
+        Effect.gen(function* () {
+          const git = yield* GitService;
+          const repositoryRoot = yield* getCurrentRepositoryRoot();
+          return yield* git.getChangedFiles(repositoryRoot);
+        }),
+      );
+      registerRPCHandler("git.getFileDiff", ({ path, area }) =>
+        Effect.gen(function* () {
+          const git = yield* GitService;
+          const repositoryRoot = yield* getCurrentRepositoryRoot();
+          return yield* git.getFileDiff(repositoryRoot, path, area);
+        }),
+      );
+
+      // Tear the transport down with the panel, otherwise in-flight
+      // promises and the message listener outlive the webview.
+      context.subscriptions.push({ dispose: () => client.dispose() });
     }),
   );
 }
