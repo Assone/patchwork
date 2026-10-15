@@ -5,7 +5,7 @@ import {
   type RepositoryChange,
 } from "../services/repository";
 import type { Repository, API as GitAPI } from "../types/git";
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 
 const toRepositoryInfo = (repository: Repository): RepositoryInfo => ({
   root: repository.rootUri.fsPath,

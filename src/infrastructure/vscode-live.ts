@@ -13,7 +13,7 @@ export const VSCodeServiceLive = Layer.succeed(VSCodeService, {
     }),
   showWarningMessage: (message) =>
     Effect.promise(async () => {
-      await vscode.window.showErrorMessage(message);
+      await vscode.window.showWarningMessage(message);
     }),
   getWorkspaceFolders: () => Effect.sync(() => vscode.workspace.workspaceFolders ?? []),
 });

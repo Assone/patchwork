@@ -1,32 +1,21 @@
 import { Context, Data, Effect } from "effect";
+import type { ChangedFile, DiffArea } from "../rpc/git-types";
 
-export type FileChangeType =
-  | "added"
-  | "modified"
-  | "deleted"
-  | "renamed"
-  | "copied"
-  | "untracked"
-  | "type-changed"
-  | "conflicted";
-
-export interface ChangedFile {
-  readonly path: string;
-  readonly originalPath?: string;
-  readonly type: FileChangeType;
-  readonly staged: boolean;
-  readonly unstaged: boolean;
-}
-
-export type DiffArea = "staged" | "unstaged";
-
-export type GitOperation = "diff" | "status" | "ls-files";
+/**
+ * The data types (`ChangedFile`, `DiffArea`, `FileChangeType`) live in
+ * `../rpc/git-types` so the webview can share them without pulling in
+ * `effect`. They are re-exported here because host-side callers
+ * already import them from this module.
+ */
+export type { ChangedFile, DiffArea, FileChangeType } from "../rpc/git-types";
 
 export class GitServiceError extends Data.TaggedError("GitServiceError")<{
   readonly operation: GitOperation;
   readonly cwd: string;
   readonly cause: unknown;
 }> {}
+
+export type GitOperation = "diff" | "status" | "ls-files";
 
 interface GitServiceApi {
   readonly getChangedFiles: (

@@ -1,5 +1,4 @@
-import * as vscode from "vscode";
-import { Context, Layer } from "effect";
+import { Context } from "effect";
 
 export interface LoggerServiceApi {
   readonly trace: (message: string) => void;

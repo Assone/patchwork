@@ -1,5 +1,4 @@
-import { Context, Data, Effect, Layer, Redacted } from "effect";
-import * as vscode from "vscode";
+import { Context, Data, Effect, Redacted } from "effect";
 
 export class MissingApiKeyError extends Data.TaggedError("MissingApiKeyError")<{
   readonly provider: string;
