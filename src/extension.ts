@@ -129,17 +129,20 @@ export async function activate(context: vscode.ExtensionContext) {
           return yield* git.getChangedFiles(repositoryRoot);
         }),
       );
-      registerRPCHandler("git.getFileDiff", ({ path, area }) =>
+      registerRPCHandler("git.getFileDiff", ({ path }) =>
         Effect.gen(function* () {
           const git = yield* GitService;
           const repositoryRoot = yield* getCurrentRepositoryRoot();
+
+          const changed = yield* git.getChangedFiles(repositoryRoot);
+          const target = changed.find((file) => file.path === path);
+          const area = target?.staged === true ? "staged" : "unstaged";
+
           return yield* git.getFileDiff(repositoryRoot, path, area);
         }),
       );
 
-      // Tear the transport down with the panel, otherwise in-flight
-      // promises and the message listener outlive the webview.
-      context.subscriptions.push({ dispose: () => client.dispose() });
+      context.subscriptions.push(client);
     }),
   );
 }

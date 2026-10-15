@@ -1,58 +1,5 @@
-/**
- * Wire protocol shared by the extension host and the webview.
- *
- * Both sides import this module. rspack builds each entry's module
- * graph independently, so a dependency-free module like this one is
- * simply included in whichever bundles reach it — sharing it is what
- * keeps the two sides from drifting apart.
- *
- * The contract: every outgoing frame is one of three shapes. Every
- * incoming frame is validated by `parseWireFrame`, which returns `null`
- * for anything that doesn't match. Callers treat `null` as "not ours,
- * ignore" so that a stray `postMessage` from elsewhere in the webview
- * can never tear down a transport.
- *
- * Frame shapes are declared once as schemas and the types are derived
- * from them, so a change to the parser and a change to the type cannot
- * drift apart. `parseWireFrame` used to be hand-written predicates; it
- * silently dropped a nested `error.cause`, which is exactly the class
- * of bug a single declaration avoids.
- *
- * Everything here is JSON-only: values are structured-cloned by
- * `vscode.Webview.postMessage` and the webview's `window.message`.
- */
-/**
- * Wire protocol shared by the extension host and the webview.
- *
- * Both sides import this module. rspack builds each entry's module
- * graph independently, so a dependency-free module like this one is
- * simply included in whichever bundles reach it — sharing it is what
- * keeps the two sides from drifting apart.
- *
- * The contract: every outgoing frame is one of three shapes. Every
- * incoming frame is validated by `parseWireFrame`, which returns `null`
- * for anything that doesn't match. Callers treat `null` as "not ours,
- * ignore" so that a stray `postMessage` from elsewhere in the webview
- * can never tear down a transport.
- *
- * Frame shapes are declared once as schemas and the types are derived
- * from them, so a change to the parser and a change to the type cannot
- * drift apart. `parseWireFrame` used to be hand-written predicates; it
- * silently dropped a nested `error.cause`, which is exactly the class
- * of bug a single declaration avoids.
- *
- * **Why Zod and not Effect Schema.** This module is shared with the
- * webview bundle, so whatever it imports lands there too. Measured on
- * this project: Effect Schema adds ~119 KB minified (~38 KB gzip) to
- * `dist/webview.js`, Zod adds ~40 KB minified (~13 KB gzip). Both
- * replace the same hand-written parsing; Zod is the cheaper way to get
- * a single source of truth across the boundary.
- *
- * Everything here is JSON-only: values are structured-cloned by
- * `vscode.Webview.postMessage` and the webview's `window.message`.
- */
 import * as z from "zod";
-import type { ChangedFile, DiffArea } from "./git-types";
+import type { ChangedFile } from "./git-types";
 
 /* ------------------------------------------------------------------ *
  * Frame schemas
@@ -582,9 +529,9 @@ export function createTransport(wire: Wire, options: CreateTransportOptions = {}
  * Methods the extension host serves to the webview.
  *
  * Every payload and result must be JSON-only — everything here is
- * structured-cloned by `postMessage`. `ChangedFile` / `DiffArea` come
- * from `./git-types`, which has no `effect` dependency, so importing
- * this module into the webview bundle stays clean.
+ * structured-cloned by `postMessage`. `ChangedFile` comes from
+ * `./git-types`, which has no `effect` dependency, so importing this
+ * module into the webview bundle stays clean.
  */
 export type HostApi = {
   /**
@@ -605,9 +552,19 @@ export type HostApi = {
     readonly payload: undefined;
     readonly result: readonly ChangedFile[];
   };
-  /** Fetch a unified diff for one file in one area. */
+  /**
+   * Fetch the unified diff for one file.
+   *
+   * The payload is just the path — no `area`. Which diff to show is
+   * domain knowledge (staged vs unstaged) and belongs to the host,
+   * which already knows each file's flags from `git.getChangedFiles`.
+   * Exposing `area` here would leak a git concept into the webview and
+   * put the burden of "asking the right question" on every caller.
+   *
+   * Returns the raw `git diff` text, empty when the file has no changes.
+   */
   readonly "git.getFileDiff": {
-    readonly payload: { readonly path: string; readonly area: DiffArea };
+    readonly payload: { readonly path: string };
     readonly result: string;
   };
 };
