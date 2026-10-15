@@ -23,5 +23,5 @@
     // "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src/webview", "src/env.d.ts"]
+  "include": ["src/webview", "src/rpc/protocol.ts", "src/rpc/git-types.ts", "src/env.d.ts"]
 }

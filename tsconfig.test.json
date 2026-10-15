@@ -9,6 +9,6 @@
     "rewriteRelativeImportExtensions": true,
     "types": ["node", "mocha"]
   },
-  "include": ["src/test/**/*.ts"],
+  "include": ["src/test/**/*.ts", "src/rpc", "src/services/log.ts"],
   "exclude": ["node_modules", "dist", "out"]
 }
