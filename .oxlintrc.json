@@ -14,6 +14,7 @@
     "no-throw-literal": "warn"
   },
   "options": {
-    "typeAware": true
+    "typeAware": true,
+    "typeCheck": true
   }
 }
