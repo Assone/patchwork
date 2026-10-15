@@ -31,7 +31,7 @@ export const ComposerForm: React.FC<ComposerFormProps> = ({
             ⚠
           </span>
           <span className="flex-1 leading-snug">
-            <span className="font-medium">Commit failed:</span> {errorReason}
+            <span className="font-medium">Drafting failed:</span> {errorReason}
           </span>
         </div>
       )}

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useFocusedCommitContext } from "../focused-commit-context";
 import type { Commit } from "../hooks/useSubmission";
 import { CommitList } from "./CommitList";
-import { DiffAccordion } from "./DiffAccordion";
+import { FileDiffAccordion } from "./FileDiffAccordion";
 import { MessageEditor } from "./MessageEditor";
 
 export interface ReviewBodyProps {
@@ -63,7 +63,7 @@ export const ReviewBody: React.FC<ReviewBodyProps> = ({
     <div className="bg-background flex h-screen">
       {/* LEFT: diff viewer (accordion over the focused commit's files). */}
       <main className="border-border flex-1 overflow-hidden border-r">
-        <DiffAccordion files={focused.files} />
+        <FileDiffAccordion files={focused.files} />
       </main>
 
       {/* RIGHT: commit list + editor. */}

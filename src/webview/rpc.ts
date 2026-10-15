@@ -16,6 +16,7 @@ import {
   parseWireFrame,
   type HostApi,
   type RpcClient,
+  type RpcContract,
   type Transport,
   type Wire,
   type WireFrame,
@@ -30,6 +31,7 @@ export type {
   RpcHandler,
   RpcMethod,
   Transport,
+  WebviewApi,
   Wire,
   WireFrame,
   WireResult,
@@ -107,7 +109,18 @@ export function createWebviewTransport(
   });
 }
 
-export function createWebviewClient<T extends HostApi = HostApi>(
+/**
+ * A typed facade over the webview's transport.
+ *
+ * `T` selects the contract being checked against:
+ *
+ * - `HostApi` for requests the webview **sends** (`call`);
+ * - `WebviewApi` for notifications it **handles** (`register`).
+ *
+ * Both directions share one transport — the wire is symmetric — the
+ * contracts just differ, which is why they're separate types.
+ */
+export function createWebviewClient<T extends RpcContract = HostApi>(
   transport: Transport,
 ): RpcClient<T> {
   return createRpcClient<T>(transport);

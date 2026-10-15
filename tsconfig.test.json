@@ -6,9 +6,22 @@
     "rootDir": "./src",
     "outDir": "./out",
     "noEmit": false,
-    "rewriteRelativeImportExtensions": true,
+    "module": "CommonJS",
+    "verbatimModuleSyntax": false,
+    "rewriteRelativeImportExtensions": false,
+    "allowImportingTsExtensions": false,
+    "moduleDetection": "auto",
     "types": ["node", "mocha"]
   },
-  "include": ["src/test/**/*.ts", "src/rpc", "src/services/log.ts"],
+  "include": [
+    "src/test/**/*.ts",
+    "src/rpc/protocol.ts",
+    "src/rpc/git-types.ts",
+    "src/diff.ts",
+    "src/services/git.ts",
+    "src/infrastructure/git-live.ts",
+    "src/webview/utils/diffRows.ts",
+    "src/webview/utils/diffWords.ts"
+  ],
   "exclude": ["node_modules", "dist", "out"]
 }

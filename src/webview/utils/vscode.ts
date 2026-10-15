@@ -11,5 +11,3 @@ declare global {
 }
 
 export type VsCodeWebviewApi = ReturnType<typeof acquireVsCodeApi>;
-
-export const vscode = acquireVsCodeApi();

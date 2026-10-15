@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRpc } from "../rpc-context";
 import type { ChangedFile } from "../../rpc/git-types";
+import { repoKeys, HOST_READ_TIMEOUT_MS } from "./queryKeys";
 
 /**
- * Provides the list of changed files by asking the extension host over
- * RPC.
+ * The changed files for the current repository.
  *
- * The host owns git access *and* knows which repository is open, so
- * this hook needs no repository argument — it just awaits a Promise.
- * No Effect and no `vscode` import, so nothing host-side leaks into
- * this bundle.
+ * Reads through TanStack Query so the result is cached, de-duplicated
+ * across components, and re-fetched automatically when the host tells us
+ * the repository changed (see `useRepositoryInvalidation`).
+ *
+ * The host owns git access and knows which repository is open, so this
+ * takes no arguments. No Effect and no `vscode` import, so nothing
+ * host-side leaks into this bundle.
  */
 export interface ChangedFilesState {
   readonly files: readonly ChangedFile[];
@@ -17,48 +20,26 @@ export interface ChangedFilesState {
   readonly error: Error | null;
 }
 
-/** How long to wait for git before giving up on a refresh. */
-const REFRESH_TIMEOUT_MS = 10_000;
-
 export function useChangedFiles(): ChangedFilesState {
   const client = useRpc();
-  const [files, setFiles] = useState<readonly ChangedFile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
 
-  // Guards against an earlier, slower response landing after a newer
-  // refresh has already been issued.
-  const requestId = useRef(0);
-
-  const refresh = useCallback(async () => {
-    const id = ++requestId.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await client.call("git.getChangedFiles", undefined, {
-        timeoutMs: REFRESH_TIMEOUT_MS,
+  // `refetchOnWindowFocus` and `retry` are inherited from the
+  // QueryClient's defaults (see main.tsx); restating them here would let
+  // the two copies drift.
+  const query = useQuery({
+    queryKey: repoKeys.changedFiles(),
+    queryFn: async (): Promise<readonly ChangedFile[]> => {
+      return await client.call("git.getChangedFiles", undefined, {
+        timeoutMs: HOST_READ_TIMEOUT_MS,
       });
+    },
+  });
 
-      console.log(result);
-      if (id !== requestId.current) {
-        return;
-      }
-      setFiles(result);
-    } catch (cause) {
-      if (id !== requestId.current) {
-        return;
-      }
-      setError(cause instanceof Error ? cause : new Error(String(cause)));
-    } finally {
-      if (id === requestId.current) {
-        setLoading(false);
-      }
-    }
-  }, [client]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  return { files, loading, error };
+  return {
+    // Keep showing the previous list while revalidating so the file
+    // tree doesn't blank out on every repository change.
+    files: query.data ?? [],
+    loading: query.isPending,
+    error: query.error,
+  };
 }

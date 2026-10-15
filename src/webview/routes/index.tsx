@@ -2,12 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useChangedFiles } from "../hooks/useChangedFiles";
+import { useFocusedFileDiff } from "../hooks/useFocusedFileDiff";
 import { useSelection } from "../hooks/useSelection";
 import { useSubmissionContext } from "../submission-context";
 import { DiffView } from "../components/DiffView";
 import { FileTree } from "../components/FileTree";
 import { SelectionHeader } from "../components/SelectionHeader";
-import { getMockDiff } from "../mocks/diffs";
 import { useFocus } from "../hooks/useFocus";
 import { ComposerForm } from "../components/ComposerForm";
 import { WaitingScreen } from "../components/WaitingScreen";
@@ -34,7 +34,7 @@ function IndexView() {
     }
   }, [status, navigate]);
 
-  const diff = useMemo(() => (focus.id === null ? undefined : getMockDiff(focus.id)), [focus.id]);
+  const focusedDiff = useFocusedFileDiff(focus.id);
 
   // Stable so `SelectionHeader` can stay memoised: the file list only
   // changes when `useChangedFiles` produces a new one, not on every
@@ -64,7 +64,7 @@ function IndexView() {
 
   return (
     <div className="bg-background-sidebar flex h-screen">
-      <DiffView path={focus.id} diff={diff} />
+      <DiffView path={focus.id} file={focusedDiff.file} />
 
       <aside className="border-border flex w-72 flex-col border-l">
         <SelectionHeader

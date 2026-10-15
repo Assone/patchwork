@@ -189,11 +189,16 @@ export function useSubmission(): UseSubmission {
       const delay = 1500 + Math.random() * 1500;
       schedule(() => {
         if (Math.random() < 0.2) {
+          // These are *drafting* failures — nothing has been committed
+          // yet and git has not run, so the reasons must not borrow
+          // commit-time wording like "pre-commit hook failed" or
+          // "permission denied: index.lock". That misattributes the
+          // failure to a stage the user hasn't reached.
           const reasons = [
-            "pre-commit hook failed",
-            "permission denied: index.lock",
-            "CONFLICT (content): Merge conflict in App.tsx",
-            "nothing to commit, working tree clean",
+            "the commit-message generator is unavailable",
+            "no API key configured for the message generator",
+            "the selection was empty when drafting began",
+            "the generator took too long to respond",
           ];
           const reason = reasons[Math.floor(Math.random() * reasons.length)];
           transition({ kind: "error", reason });
