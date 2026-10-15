@@ -1,0 +1,114 @@
+/**
+ * Webview-side adapters.
+ *
+ * Mirrors `src/infrastructure/rpc-host.ts`: the protocol, the transport
+ * state machine and the client are shared via
+ * `../rpc/protocol`, so only the part that genuinely differs
+ * lives here — bridging the browser `message` event and
+ * `acquireVsCodeApi()` to a `Wire`.
+ *
+ * No Effect: this bundle is a plain React app and has no use for the
+ * effect runtime.
+ */
+import {
+  createRpcClient,
+  createTransport,
+  parseWireFrame,
+  type HostApi,
+  type RpcClient,
+  type Transport,
+  type Wire,
+  type WireFrame,
+} from "../rpc/protocol";
+import type { VsCodeWebviewApi } from "./utils/vscode";
+
+export type {
+  HostApi,
+  RpcCallOptions,
+  RpcClient,
+  RpcContract,
+  RpcHandler,
+  RpcMethod,
+  Transport,
+  Wire,
+  WireFrame,
+  WireResult,
+  WireSerializedError,
+} from "../rpc/protocol";
+export {
+  AbortError,
+  RemoteError,
+  TimeoutError,
+  createRpcClient,
+  createTransport,
+  parseWireFrame,
+  serializeError,
+} from "../rpc/protocol";
+
+/**
+ * Wraps the browser `message` event plus `acquireVsCodeApi()` as a
+ * bidirectional `Wire`.
+ *
+ * `acquireVsCodeApi()` may only be called once per webview session, so
+ * the acquired object is captured in this closure and never exposed.
+ * VS Code's guidance is also to keep that object off the global scope,
+ * which this satisfies.
+ *
+ * @param api inject an already-acquired instance; mainly for tests.
+ */
+export function createWindowWire(api?: VsCodeWebviewApi): Wire {
+  const acquired = api ?? window.acquireVsCodeApi?.();
+  if (acquired === undefined) {
+    throw new Error(
+      "acquireVsCodeApi() is unavailable — this bundle is not running inside a VS Code webview",
+    );
+  }
+
+  const handlers = new Set<(frame: WireFrame) => void>();
+  const onMessage = (event: MessageEvent) => {
+    const frame = parseWireFrame(event.data);
+    if (frame !== null) {
+      for (const handler of handlers) {
+        handler(frame);
+      }
+    }
+  };
+  window.addEventListener("message", onMessage);
+
+  return {
+    send(frame) {
+      acquired.postMessage(frame);
+    },
+    subscribe(handler) {
+      handlers.add(handler);
+      return () => {
+        handlers.delete(handler);
+      };
+    },
+    dispose() {
+      handlers.clear();
+      window.removeEventListener("message", onMessage);
+    },
+  };
+}
+
+export interface WebviewTransportOptions {
+  /** Forward `.stack` on handler errors. Off by default. */
+  readonly includeErrorStacks?: boolean;
+}
+
+export function createWebviewTransport(
+  wire: Wire,
+  options: WebviewTransportOptions = {},
+): Transport {
+  return createTransport(wire, {
+    includeErrorStacks: options.includeErrorStacks === true,
+    idPrefix: "w",
+  });
+}
+
+export function createWebviewClient<T extends HostApi = HostApi>(
+  transport: Transport,
+): RpcClient<T> {
+  return createRpcClient<T>(transport);
+}
