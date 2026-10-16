@@ -56,6 +56,7 @@
     "oxfmt": "^0.72.0",
     "oxlint": "^1.87.0",
     "oxlint-tsgolint": "^7.0.2004",
+    "rspack-merge": "^1.0.1",
     "typescript": "^6.0.3"
   },
   "overrides": {
@@ -80,7 +81,44 @@
           "group": "navigation"
         }
       ]
-    }
+    },
+    "configuration": [
+      {
+        "title": "Patchwork · LLM",
+        "id": "patchwork.llm",
+        "properties": {
+          "patchwork.llm.provider": {
+            "type": "string",
+            "enum": [
+              "openai",
+              "anthropic",
+              "openai-compatible"
+            ],
+            "default": "openai",
+            "markdownDescription": "Which LLM provider to call. `openai-compatible` covers any endpoint that speaks the OpenAI wire format (Ollama, vLLM, DeepSeek, OpenRouter, Groq, LM Studio, Azure OpenAI)."
+          },
+          "patchwork.llm.model": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Model id for the chosen provider, e.g. `gpt-4o`, `claude-sonnet-4-5`, `qwen2.5-coder:7b`."
+          },
+          "patchwork.llm.baseURL": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Endpoint root for `openai-compatible` providers, e.g. `http://localhost:11434/v1` (Ollama) or `https://api.deepseek.com/v1`. Ignored for `openai` and `anthropic`."
+          },
+          "patchwork.llm.chat-completions": {
+            "type": "string",
+            "enum": [
+              "chat-completions",
+              "responses"
+            ],
+            "default": "chat-completions",
+            "markdownDescription": "Wire format for `openai-compatible` endpoints. `chat-completions` is the common case; switch to `responses` for Azure OpenAI."
+          }
+        }
+      }
+    ]
   },
   "activationEvents": [],
   "engines": {
