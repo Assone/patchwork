@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import { describe, test } from "vitest";
 import {
   AbortError,
   createRpcClient,
@@ -125,7 +126,7 @@ const createPair = ({ aObserver, bObserver, bIncludeStacks = false }: PairOption
   };
 };
 
-suite("RPC transport", () => {
+describe("RPC transport", () => {
   test("resolves a request with the handler's return value", async () => {
     const { a, b } = createPair();
     a.register("git.getChangedFiles", async (payload) => {
@@ -379,8 +380,10 @@ suite("RPC transport", () => {
     await assert.rejects(() => a.request("git.boom", undefined));
 
     assert.strictEqual(failures.length, 1);
-    assert.strictEqual(failures[0]?.method, "git.boom");
-    assert.strictEqual((failures[0]?.error as Error).message, "handler exploded");
+    const failure = failures[0];
+    assert.ok(failure !== undefined);
+    assert.strictEqual(failure.method, "git.boom");
+    assert.strictEqual((failure.error as Error).message, "handler exploded");
     a.dispose();
     b.dispose();
   });
@@ -569,7 +572,8 @@ suite("RPC transport", () => {
   test("emits a request frame with the documented shape", () => {
     const { transport, outbound } = createLoopback();
 
-    void transport.request("m", { a: 1 });
+    // Disposing rejects the in-flight request; the frame is what matters.
+    void transport.request("m", { a: 1 }).catch(() => {});
 
     const frame = outbound[0];
     assert.strictEqual(frame?.kind, "req");
@@ -612,8 +616,8 @@ suite("RPC transport", () => {
     const a = createLoopback({ idPrefix: "a" });
     const b = createLoopback({ idPrefix: "b" });
 
-    void a.transport.request("m", undefined);
-    void b.transport.request("m", undefined);
+    void a.transport.request("m", undefined).catch(() => {});
+    void b.transport.request("m", undefined).catch(() => {});
 
     assert.ok(a.outbound[0]?.kind === "req" && a.outbound[0].id.startsWith("a"));
     assert.ok(b.outbound[0]?.kind === "req" && b.outbound[0].id.startsWith("b"));

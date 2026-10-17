@@ -15,47 +15,9 @@ import {
 } from "./protocol";
 import { LoggerService } from "../services/log";
 
-export type {
-  HostApi,
-  RpcCallOptions,
-  RpcClient,
-  RpcContract,
-  RpcHandler,
-  RpcMethod,
-  Transport,
-  Wire,
-  WireFrame,
-  WireResult,
-  WireSerializedError,
-} from "./protocol";
-export {
-  AbortError,
-  RemoteError,
-  TimeoutError,
-  createRpcClient,
-  createTransport,
-  parseWireFrame,
-  serializeError,
-} from "./protocol";
+/* Host-side wire and transport adapters. */
 
-/**
- * Host-side adapters.
- *
- * This file is thin on purpose. The protocol, the transport state
- * machine and the client live in `../rpc/protocol`, which the
- * webview imports too — so the two sides cannot drift. All that remains
- * here is the part that genuinely differs: bridging `vscode.Webview`'s
- * one-way `postMessage` / `onDidReceiveMessage` pair to a `Wire`.
- */
-
-/**
- * Wraps a `vscode.Webview` as a bidirectional `Wire`.
- *
- * `onDidReceiveMessage` delivers `unknown`, so every inbound value goes
- * through `parseWireFrame`; anything that doesn't match the protocol is
- * dropped rather than throwing, so an unrelated `postMessage` elsewhere
- * in the webview can't take down the transport.
- */
+/** Malformed inbound messages are dropped, not thrown. */
 export function createWebviewWire(webview: vscode.Webview): Wire {
   const handlers = new Set<(frame: WireFrame) => void>();
   const subscription = webview.onDidReceiveMessage((raw) => {
@@ -69,8 +31,6 @@ export function createWebviewWire(webview: vscode.Webview): Wire {
 
   return {
     send(frame) {
-      // `Webview.postMessage` structured-clones for us; frames are
-      // JSON-safe by construction, so no manual stringify.
       webview.postMessage(frame);
     },
     subscribe(handler) {
@@ -93,12 +53,6 @@ export interface HostTransportOptions {
   readonly observer?: TransportObserver;
 }
 
-/**
- * Builds a host `Transport` over a webview.
- *
- * @param includeErrorStacks forward stacks on handler failures — pass
- * `isDev` from the extension context.
- */
 export function createHostTransport(wire: Wire, options: HostTransportOptions = {}): Transport {
   return createTransport(wire, {
     includeErrorStacks: options.includeErrorStacks === true,
@@ -109,58 +63,17 @@ export function createHostTransport(wire: Wire, options: HostTransportOptions = 
   });
 }
 
-/**
- * A typed facade over the host's transport.
- *
- * The transport is symmetric — it serves requests *and* sends them — so
- * the same instance is used in both directions. `T` selects which
- * contract the calls are checked against:
- *
- * - `HostApi` for methods the host **serves** (`register`);
- * - `WebviewApi` for notifications the host **sends** (`notify`).
- *
- * Splitting them by contract rather than by transport keeps the type
- * checker from accepting a host method name in a `notify` call.
- */
+/** `T` picks the contract checked by `register`/`notify`. */
 export function createHostClient<T extends RpcContract = HostApi>(
   transport: Transport,
 ): RpcClient<T> {
   return createRpcClient<T>(transport);
 }
 
-/**
- * Bridges an Effect-returning handler into the Promise-shaped RPC
- * layer.
- *
- * `runPromise` rejects with the squashed cause on failure, so the
- * rejection is caught by the transport and serialized into a
- * `status: "err"` frame — no manual `Exit` inspection needed, and the
- * Effect never crosses the wire.
- */
-export const effectHandler =
-  <A, E, R>(runtime: ManagedRuntime<R, never>, fn: (payload: never) => Effect.Effect<A, E, R>) =>
-  (payload: unknown): Promise<unknown> =>
-    runtime.runPromise(fn(payload as never));
-
-/**
- * Adapts the host's `LoggerService` to the transport's logger-neutral
- * `TransportObserver`.
- *
- * This is the only place the two worlds meet. `protocol.ts` stays free
- * of `effect` so the webview can share it; the host supplies the
- * implementation. Resolved from the runtime on first use because the
- * transport is created outside any Effect context — the panel command
- * handler is plain imperative code.
- */
+/** Logging re-enters the runtime; a logging failure must never escape. */
 export const createLoggerObserver = (
   runtime: ManagedRuntime<LoggerService, never>,
 ): TransportObserver => {
-  /**
-   * The transport runs outside any Effect context (it is driven by the
-   * panel's imperative command handler), so logging has to re-enter the
-   * runtime. Fire-and-forget by design: a logging failure must never
-   * take down the transport it is observing.
-   */
   const log = (level: "debug" | "warn" | "error", message: string): void => {
     void runtime
       .runPromise(

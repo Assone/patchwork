@@ -1,29 +1,16 @@
 import * as z from "zod";
-import type { ChangedFile, RepositoryChangeReason } from "./git-types";
 
-/* ------------------------------------------------------------------ *
- * Frame schemas
- *
- * The types below are derived from these schemas rather than written by
- * hand, so parsing and typing have one source of truth.
- *
- * Every object is `strictObject` so an unexpected key is rejected rather
- * than silently stripped — notably a `req` that also carries `result`.
- * ------------------------------------------------------------------ */
+/* Frame schemas */
 
-/** Anything JSON can carry across the wire. */
 const Json = z.unknown();
 
-/**
- * Error shape carried by a `status: "err"` result.
- *
- * `cause` recurses, so the schema is declared with an explicit
- * `z.ZodType` annotation and lazily self-references.
- */
+/** The wire shape of a thrown error; `details` carries tagged-error fields. */
 export interface WireSerializedError {
   readonly name: string;
   readonly message: string;
   readonly stack?: string;
+  /** Own, JSON-safe properties of a tagged error (`reason`, `operation`, …). */
+  readonly details?: Readonly<Record<string, unknown>>;
   readonly cause?: WireSerializedError;
 }
 
@@ -31,6 +18,7 @@ const SerializedError: z.ZodType<WireSerializedError> = z.strictObject({
   name: z.string(),
   message: z.string(),
   stack: z.string().optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
   cause: z.lazy(() => SerializedError).optional(),
 });
 
@@ -47,12 +35,7 @@ const NotifyFrame = z.strictObject({
   payload: Json.optional(),
 });
 
-/**
- * `value` is optional because `JSON.stringify` drops `undefined`: a
- * handler returning `undefined` legitimately produces `{"status":"ok"}`
- * on the wire. `null` still round-trips as `null`, so the two stay
- * distinguishable to the caller.
- */
+// `undefined` is dropped by JSON; `null` still round-trips.
 const OkResult = z.strictObject({
   status: z.literal("ok"),
   value: Json.optional(),
@@ -69,53 +52,25 @@ const ResponseFrame = z.strictObject({
   result: z.discriminatedUnion("status", [OkResult, ErrResult]),
 });
 
-export type WireRequestFrame = z.infer<typeof RequestFrame>;
-export type WireNotifyFrame = z.infer<typeof NotifyFrame>;
-export type WireResponseFrame = z.infer<typeof ResponseFrame>;
-export type WireResult = z.infer<typeof OkResult | typeof ErrResult>;
-
-/**
- * A frame, discriminated on `kind`.
- */
 const WireFrameSchema = z.discriminatedUnion("kind", [RequestFrame, NotifyFrame, ResponseFrame]);
 
 export type WireFrame = z.infer<typeof WireFrameSchema>;
 
-/* ------------------------------------------------------------------ *
- * Parsing
- * ------------------------------------------------------------------ */
-
-/**
- * Validates an inbound value against the protocol.
- *
- * Returns `null` for anything that isn't a well-formed frame, so a
- * transport can drop it instead of throwing. `safeParse` avoids the
- * throw/catch that a `parse` would need; the failure detail is
- * intentionally discarded, since either it is a valid frame or we
- * ignore it.
- */
+/** Returns null for malformed frames so the transport can drop them. */
 export function parseWireFrame(value: unknown): WireFrame | null {
   const result = WireFrameSchema.safeParse(value);
   return result.success ? result.data : null;
 }
 
-/* ------------------------------------------------------------------ *
- * Caller-side errors
- * ------------------------------------------------------------------ */
+/* Caller-side errors */
 
-/**
- * Reconstructed on the caller side from a `status: "err"` frame.
- *
- * `name` mirrors the *remote* error's name rather than a fixed string
- * so callers can branch on it:
- * `if (err instanceof RemoteError && err.name === "MethodNotFoundError")`.
- * `instanceof` tells you it came from the other side; `.name` tells you
- * what went wrong over there.
- */
+/** Reconstructed from a `status: "err"` frame; `.name` is the remote name. */
 export class RemoteError extends Error {
+  readonly details: Readonly<Record<string, unknown>> | undefined;
   constructor(readonly serialized: WireSerializedError) {
     super(serialized.message);
     this.name = serialized.name;
+    this.details = serialized.details;
     if (serialized.stack !== undefined) {
       this.stack = serialized.stack;
     }
@@ -142,29 +97,57 @@ export class AbortError extends Error {
   }
 }
 
-/* ------------------------------------------------------------------ *
- * Serialization
- * ------------------------------------------------------------------ */
+/* Serialization */
+
+const errorDetails = (error: Error): Readonly<Record<string, unknown>> | undefined => {
+  const details: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(error)) {
+    if (key === "name" || key === "message" || key === "stack" || key === "cause") {
+      continue;
+    }
+    if (value === undefined) {
+      continue;
+    }
+    try {
+      JSON.stringify(value);
+      details[key] = value;
+    } catch {
+      // Not wire-safe; leave it to the host log.
+    }
+  }
+  return Object.keys(details).length === 0 ? undefined : details;
+};
 
 /**
- * Flattens any thrown value into the wire shape. `cause` chains are
- * walked recursively; non-`Error` throws are stringified, falling back
- * to `String(cause)` if even `JSON.stringify` throws (cycles).
+ * Flattens any thrown value into the wire shape. Tagged-error fields
+ * (`reason`, `operation`, `cwd`, …) travel in `details`, so the caller
+ * can act on them without parsing the message.
  */
-export function serializeError(cause: unknown, includeStack: boolean): WireSerializedError {
+const serializeErrorSeen = (
+  cause: unknown,
+  includeStack: boolean,
+  seen: Set<unknown>,
+): WireSerializedError => {
   if (cause instanceof Error) {
+    if (seen.has(cause)) {
+      return { name: cause.name, message: "[circular cause]" };
+    }
+    seen.add(cause);
+
     const stack = includeStack && typeof cause.stack === "string" ? cause.stack : undefined;
+    const details = errorDetails(cause);
     const nested =
-      "cause" in cause && cause.cause !== undefined
-        ? serializeError(cause.cause, includeStack)
-        : undefined;
+      cause.cause !== undefined ? serializeErrorSeen(cause.cause, includeStack, seen) : undefined;
+
     return {
       name: cause.name,
       message: cause.message,
       ...(stack === undefined ? {} : { stack }),
+      ...(details === undefined ? {} : { details }),
       ...(nested === undefined ? {} : { cause: nested }),
     };
   }
+
   let message: string;
   try {
     message = JSON.stringify(cause);
@@ -172,41 +155,26 @@ export function serializeError(cause: unknown, includeStack: boolean): WireSeria
     message = String(cause);
   }
   return { name: "NonErrorThrown", message };
+};
+
+export function serializeError(cause: unknown, includeStack: boolean): WireSerializedError {
+  return serializeErrorSeen(cause, includeStack, new Set());
 }
 
-/* ------------------------------------------------------------------ *
- * Transport surface
- * ------------------------------------------------------------------ */
+/* Transport surface */
 
-/**
- * A handler runs on the *receiving* side. It returns a Promise;
- * throwing or rejecting is reported back to the caller as a
- * `status: "err"` response.
- *
- * Payload and result *shape* safety comes from the contract, not from
- * this signature — see `register` on the client, which is typed
- * against `RpcContract`.
- */
+/** A handler runs on the receiving side; failures become `status: "err"`. */
 export type RpcHandler = (payload: unknown) => Promise<unknown>;
 
-/** Options for a single call. Both fields are optional. */
 export interface RpcCallOptions {
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
 }
 
-/**
- * The message channel, one direction pair, abstracted away.
- *
- * `Wire` is the only place that knows about `vscode.Webview` or the
- * browser `message` event, which is what lets the transport be shared.
- */
+/** The message channel; the only place that knows about webview/browser APIs. */
 export interface Wire {
-  /** Send a frame to the peer. */
   send(frame: WireFrame): void;
-  /** Subscribe to incoming frames. Returns an unsubscribe function. */
   subscribe(handler: (frame: WireFrame) => void): () => void;
-  /** Optional lifecycle teardown. */
   dispose?(): void;
 }
 
@@ -217,30 +185,13 @@ export interface Transport {
   dispose(): void;
 }
 
-/* ------------------------------------------------------------------ *
- * Contracts and clients
- * ------------------------------------------------------------------ */
+/* Contracts and clients */
 
-/**
- * Shape of a single method entry in a contract.
- */
 export type RpcMethod = { readonly payload: unknown; readonly result: unknown };
 
-/**
- * A contract maps a method name to its payload/result pair.
- *
- * Contracts are declared with `type` rather than `interface`: only type
- * aliases with object-literal bodies get an implicit index signature,
- * so an `interface` would not satisfy this `Record` constraint.
- */
+/** A contract maps a method name to its payload/result pair. */
 export type RpcContract = Record<string, RpcMethod>;
 
-/**
- * Typed facade over a `Transport`.
- *
- * Payload is optional so void-payload methods can be called as
- * `client.call("git.refresh")`.
- */
 export interface RpcClient<T extends RpcContract> {
   call<K extends keyof T>(
     method: K,
@@ -255,10 +206,6 @@ export interface RpcClient<T extends RpcContract> {
   dispose(): void;
 }
 
-/**
- * Builds a client from a transport. Shared by both sides so the two
- * cannot drift on call semantics.
- */
 export function createRpcClient<T extends RpcContract>(transport: Transport): RpcClient<T> {
   return {
     call: (method, payload, options) => transport.request(String(method), payload, options),
@@ -268,9 +215,7 @@ export function createRpcClient<T extends RpcContract>(transport: Transport): Rp
   };
 }
 
-/* ------------------------------------------------------------------ *
- * Shared transport implementation
- * ------------------------------------------------------------------ */
+/* Shared transport implementation */
 
 interface InflightEntry {
   readonly resolve: (value: unknown) => void;
@@ -280,58 +225,23 @@ interface InflightEntry {
 }
 
 export interface CreateTransportOptions {
-  /**
-   * Whether the *handling* side forwards `.stack` when a handler
-   * throws. Defaults to false: stack traces are large and rarely
-   * useful across the boundary.
-   */
+  /** Forward `.stack` on handler errors. Off by default; stacks are large. */
   readonly includeErrorStacks?: boolean;
-  /**
-   * Prefix for generated request ids. Distinct per side so a frame
-   * captured in a log is trivially attributable.
-   */
+  /** Request-id prefix, so a captured frame is attributable to a side. */
   readonly idPrefix?: string;
-  /**
-   * Observes what the transport does. Both sides accept one; only the
-   * host is expected to pass a real logger, since the webview has no
-   * durable place to write.
-   *
-   * This exists because the transport is otherwise silent about its own
-   * failures. A handler that throws is answered to the peer, so without
-   * this the host would have no record that anything went wrong on its
-   * side at all.
-   */
+  /** Observer for failures the transport would otherwise hide. */
   readonly observer?: TransportObserver;
 }
 
-/**
- * Observation hooks for a `Transport`.
- *
- * Deliberately plain functions rather than a logger type: this module is
- * shared with the webview and must stay free of `effect`, so the host
- * adapts `LoggerService` to these signatures instead of the other way
- * around.
- */
+/** Plain callbacks, so this module stays free of `effect`. */
 export interface TransportObserver {
-  /** An inbound request found no registered handler. */
   readonly onMethodNotFound?: (method: string, id: string) => void;
-  /** An inbound handler threw or rejected. */
   readonly onHandlerError?: (method: string, error: unknown) => void;
-  /** A `notify` handler threw. Notifications have no reply channel. */
   readonly onNotificationError?: (method: string, error: unknown) => void;
-  /** A response arrived for a request that already settled. */
   readonly onOrphanResponse?: (id: string) => void;
-  /** The transport was disposed. */
   readonly onDispose?: () => void;
 }
 
-/**
- * Creates a `Transport` over any `Wire`.
- *
- * Shared by both sides. The state machine is identical on each side —
- * what differs is only the `Wire` implementation underneath, which is
- * the entire reason this can be one function instead of two.
- */
 export function createTransport(wire: Wire, options: CreateTransportOptions = {}): Transport {
   const includeStacks = options.includeErrorStacks === true;
   const idPrefix = options.idPrefix ?? "r";
@@ -346,17 +256,13 @@ export function createTransport(wire: Wire, options: CreateTransportOptions = {}
   };
 
   const unsubscribe = wire.subscribe((frame) => {
-    // Frames can still arrive between `dispose()` and the wire actually
-    // tearing down its listener. Answering them would resurrect a
-    // transport the owner believes is gone.
+    // Frames can arrive between dispose() and the wire teardown.
     if (disposed) {
       return;
     }
-    // Response to one of our own outgoing requests.
     if (frame.kind === "res") {
       const entry = inflight.get(frame.id);
       if (entry === undefined) {
-        // A late reply to a call we already timed out or aborted.
         observer.onOrphanResponse?.(frame.id);
         return;
       }
@@ -372,7 +278,6 @@ export function createTransport(wire: Wire, options: CreateTransportOptions = {}
       return;
     }
 
-    // Someone asking us to do work.
     if (frame.kind === "req") {
       const handler = handlers.get(frame.method);
       if (handler === undefined) {
@@ -395,9 +300,7 @@ export function createTransport(wire: Wire, options: CreateTransportOptions = {}
       return;
     }
 
-    // Fire-and-forget. No return channel exists, so a failing handler
-    // has nowhere to report to — the observer is the only place it
-    // leaves a trace.
+    // Notifications have no reply channel; the observer is the only trace.
     const handler = handlers.get(frame.method);
     if (handler !== undefined) {
       void handler(frame.payload).catch((cause: unknown) => {
@@ -521,78 +424,4 @@ export function createTransport(wire: Wire, options: CreateTransportOptions = {}
   return { request, notify, register, dispose };
 }
 
-/* ------------------------------------------------------------------ *
- * Contract
- * ------------------------------------------------------------------ */
-
-/**
- * Methods the extension host serves to the webview.
- *
- * Every payload and result must be JSON-only — everything here is
- * structured-cloned by `postMessage`. `ChangedFile` comes from
- * `./git-types`, which has no `effect` dependency, so importing this
- * module into the webview bundle stays clean.
- */
-export type HostApi = {
-  /**
-   * Handshake. The webview calls this once on boot to confirm the host
-   * is wired up *and* to learn which repository it is operating on —
-   * the webview deliberately has no filesystem or workspace access of
-   * its own, so the host is the authority on where the repository is.
-   */
-  readonly "host.handshake": {
-    readonly payload: undefined;
-    readonly result: {
-      readonly repositoryRoot: string;
-      readonly workspaceFolders: readonly string[];
-    };
-  };
-  /** Fetch the changed files for the current repository. */
-  readonly "git.getChangedFiles": {
-    readonly payload: undefined;
-    readonly result: readonly ChangedFile[];
-  };
-  /**
-   * Fetch the unified diff for one file.
-   *
-   * The payload is just the path — no `area`. Which diff to show is
-   * domain knowledge (staged vs unstaged) and belongs to the host,
-   * which already knows each file's flags from `git.getChangedFiles`.
-   * Exposing `area` here would leak a git concept into the webview and
-   * put the burden of "asking the right question" on every caller.
-   *
-   * Returns the raw `git diff` text, empty when the file has no changes.
-   */
-  readonly "git.getFileDiff": {
-    readonly payload: { readonly path: string };
-    readonly result: string;
-  };
-};
-
-/**
- * Notifications the host sends *to* the webview — fire-and-forget, no
- * reply. The webview is the handling side here.
- *
- * This is the push half of the data flow. Without it the webview can
- * only ever show a snapshot taken at mount: if the user stages a file
- * from the VS Code UI, nothing tells us to re-read the repository.
- */
-export type WebviewApi = {
-  /**
-   * The repository changed and cached reads are stale.
-   *
-   * The payload carries only *why* — the webview is told *that* things
-   * changed and re-reads through the normal request methods. Pushing the
-   * new state here would mean serialising a whole file list into every
-   * notification.
-   *
-   * `reason` is the host's own union (see `./git-types`), not `string`,
-   * so a consumer that switches on it is checked against what the host
-   * can actually emit.
-   */
-  readonly "repo.invalidate": {
-    readonly payload: { readonly reason: RepositoryChangeReason };
-    /** Notifications have no reply channel, so there is no result. */
-    readonly result: void;
-  };
-};
+export type { HostApi, WebviewApi } from "./contract";

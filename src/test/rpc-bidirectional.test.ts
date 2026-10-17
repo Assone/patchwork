@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import { describe, test } from "vitest";
 import type { ChangedFile } from "../rpc/git-types";
 import {
   createRpcClient,
@@ -64,7 +65,7 @@ const createPair = () => {
   };
 };
 
-suite("Bidirectional RPC", () => {
+describe("Bidirectional RPC", () => {
   test("the host can notify the webview", async () => {
     const { hostNotify, webviewServe } = createPair();
 
@@ -73,11 +74,11 @@ suite("Bidirectional RPC", () => {
       seen.push(reason);
     });
 
-    hostNotify.notify("repo.invalidate", { reason: "workingTree" });
+    hostNotify.notify("repo.invalidate", { reason: "state" });
     await Promise.resolve();
     await Promise.resolve();
 
-    assert.deepStrictEqual(seen, ["workingTree"]);
+    assert.deepStrictEqual(seen, ["state"]);
   });
 
   test("one transport serves both directions", async () => {
@@ -128,7 +129,7 @@ suite("Bidirectional RPC", () => {
     const notifier = createRpcClient<WebviewApi>(createTransport(observedWire, { idPrefix: "h" }));
     webviewServe.register("repo.invalidate", async () => {});
 
-    notifier.notify("repo.invalidate", { reason: "index" });
+    notifier.notify("repo.invalidate", { reason: "state" });
     await Promise.resolve();
     await Promise.resolve();
 
