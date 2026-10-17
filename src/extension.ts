@@ -2,48 +2,24 @@ import { Effect, Layer, ManagedRuntime, Stream } from "effect";
 import * as vscode from "vscode";
 import { GitServiceLive } from "./infrastructure/git-live";
 import { LoggerServiceLive } from "./infrastructure/log-live";
+import { LLMConfigServiceLive } from "./infrastructure/config-live";
+import { LLMServiceLive } from "./infrastructure/llm-live";
 import { RepositoryServiceLive } from "./infrastructure/repository-live";
 import {
   createHostClient,
   createHostTransport,
   createLoggerObserver,
   createWebviewWire,
-  registerEffectHandler,
 } from "./rpc/host";
 import { SecretServiceLive } from "./infrastructure/secret-live";
-import { VSCodeServiceLive } from "./infrastructure/vscode-live";
 import { type API as GitAPI, type GitExtension } from "./types/git";
-import { GitService } from "./services/git";
 import type { HostApi, WebviewApi } from "./rpc/protocol";
 import { RepositoryService } from "./services/repository";
-import { VSCodeService } from "./services/vscode";
-import template from "./webview/index.html";
+
 import path from "node:path";
-
-/**
- * The repository the webview is currently operating on.
- *
- * The webview has no filesystem or workspace access of its own, so the
- * host is the authority on which repository is in play. Resolution
- * order: an open git repository first, then the first workspace
- * folder, so a plain folder without git still works.
- */
-const getCurrentRepositoryRoot = Effect.fn("getCurrentRepositoryRoot")(function* () {
-  const repository = yield* RepositoryService;
-  const repositories = yield* repository.getRepositories;
-  const openRepository = repositories[0]?.root;
-  if (openRepository !== undefined) {
-    return openRepository;
-  }
-
-  const vsCode = yield* VSCodeService;
-  const workspaceFolders = yield* vsCode.getWorkspaceFolders();
-  const workspaceFolder = workspaceFolders[0];
-  if (workspaceFolder === undefined) {
-    throw new Error("No repository or workspace folder is open");
-  }
-  return workspaceFolder.uri.fsPath;
-});
+import { registerClientHandler } from "./host/handlers";
+import { getHtmlForWebview } from "./host/webview-html";
+import { setupWebviewReload } from "./host/dev-reload";
 
 export async function activate(context: vscode.ExtensionContext) {
   const isDev = context.extensionMode === vscode.ExtensionMode.Development;
@@ -52,131 +28,143 @@ export async function activate(context: vscode.ExtensionContext) {
   const logger = vscode.window.createOutputChannel("Patchwork", {
     log: true,
   });
+  context.subscriptions.push(logger);
+
+  const secretLayer = SecretServiceLive(context);
 
   const AppLive = Layer.mergeAll(
     LoggerServiceLive(logger),
-    SecretServiceLive(context),
+    secretLayer,
     RepositoryServiceLive(git),
-    GitServiceLive,
-    VSCodeServiceLive,
+    GitServiceLive(git.git.path),
+    LLMServiceLive.pipe(Layer.provide(secretLayer)),
+    LLMConfigServiceLive.pipe(Layer.provide(secretLayer)),
   );
   const runtime = ManagedRuntime.make(AppLive);
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand("patchwork.openCommitComposer", () => {
-      const panel = vscode.window.createWebviewPanel(
-        "patchwork.commitComposer", // viewType
-        "Commit Composer", // 标题
-        vscode.ViewColumn.One,
-        {
-          localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, "dist"))],
-          enableScripts: true,
-          retainContextWhenHidden: true,
-        },
-      );
+  context.subscriptions.push({
+    dispose: () => {
+      void runtime.dispose();
+    },
+  });
 
-      if (isDev) {
-        const distPath = vscode.Uri.joinPath(context.extensionUri, "dist").fsPath;
-        const watcher = vscode.workspace.createFileSystemWatcher(
-          new vscode.RelativePattern(distPath, "*"),
+  // Registered once per activation, not per panel: `setupWebviewReload`
+  // appends its watcher to `context.subscriptions`, so calling it inside
+  // the command would accumulate one watcher for every composer the user
+  // ever opened.
+  if (isDev) {
+    setupWebviewReload(context);
+  }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "patchwork.openCommitComposer",
+      async (sourceControl?: vscode.SourceControl) => {
+        const repositoryRoot = await resolveRepositoryRoot(git, sourceControl);
+        if (repositoryRoot === undefined) {
+          return;
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+          "patchwork.commitComposer",
+          `Patchwork · ${path.basename(repositoryRoot)}`,
+          vscode.ViewColumn.One,
+          {
+            localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, "dist"))],
+            enableScripts: true,
+            retainContextWhenHidden: true,
+          },
         );
 
-        watcher.onDidChange(() => {
-          vscode.commands.executeCommand("workbench.action.webview.reloadWebviewAction");
+        const transport = createHostTransport(createWebviewWire(panel.webview), {
+          includeErrorStacks: isDev,
+          observer: createLoggerObserver(runtime),
         });
 
-        watcher.onDidCreate(() => {
-          vscode.commands.executeCommand("workbench.action.webview.reloadWebviewAction");
+        const client = createHostClient<HostApi>(transport);
+        const notifier = createHostClient<WebviewApi>(transport);
+
+        const disposeHandlers = registerClientHandler(client, notifier, runtime, repositoryRoot);
+
+        const pushFiber = runtime.runFork(
+          Effect.gen(function* () {
+            const repository = yield* RepositoryService;
+            yield* Stream.runForEach(repository.changes, (change) =>
+              change.repository.root === repositoryRoot
+                ? Effect.sync(() => {
+                    notifier.notify("repo.invalidate", { reason: change.reason });
+                  })
+                : Effect.void,
+            );
+          }),
+        );
+
+        panel.webview.html = getHtmlForWebview(context, panel.webview);
+
+        panel.onDidDispose(() => {
+          // Abort provider requests before tearing down the wire: the
+          // webview is going away, so nothing should keep streaming.
+          disposeHandlers();
+          pushFiber.interruptUnsafe();
+          client.dispose();
         });
-
-        watcher.onDidDelete(() => {
-          vscode.commands.executeCommand("workbench.action.webview.reloadWebviewAction");
-        });
-
-        context.subscriptions.push(watcher);
-      }
-
-      panel.webview.html = getHtmlForWebview(context, panel.webview);
-
-      // Expose the host's Effect services to the webview over RPC. The
-      // webview calls `git.getChangedFiles(...)` and awaits a plain
-      // Promise; the Effect never leaves this process.
-      //
-      // The observer matters: handler failures are answered to the
-      // webview, so without it the host's log would show nothing at all
-      // when something goes wrong on this side.
-      const transport = createHostTransport(createWebviewWire(panel.webview), {
-        includeErrorStacks: isDev,
-        observer: createLoggerObserver(runtime),
-      });
-
-      // Two facades over one transport: the transport is symmetric, but
-      // the *contracts* differ per direction, so each facade type-checks
-      // against the right one.
-      const client = createHostClient<HostApi>(transport);
-      const notifier = createHostClient<WebviewApi>(transport);
-      const registerRPCHandler = registerEffectHandler(client, runtime);
-
-      registerRPCHandler("host.handshake", () =>
-        Effect.gen(function* () {
-          const vsCode = yield* VSCodeService;
-          const workspaceFolders = (yield* vsCode.getWorkspaceFolders()).map(
-            (folder) => folder.uri.fsPath,
-          );
-          const repositoryRoot = yield* getCurrentRepositoryRoot();
-          return { repositoryRoot, workspaceFolders };
-        }),
-      );
-      registerRPCHandler("git.getChangedFiles", () =>
-        Effect.gen(function* () {
-          const git = yield* GitService;
-          const repositoryRoot = yield* getCurrentRepositoryRoot();
-          return yield* git.getChangedFiles(repositoryRoot);
-        }),
-      );
-      registerRPCHandler("git.getFileDiff", ({ path }) =>
-        Effect.gen(function* () {
-          const git = yield* GitService;
-          const repositoryRoot = yield* getCurrentRepositoryRoot();
-
-          const changed = yield* git.getChangedFiles(repositoryRoot);
-          const target = changed.find((file) => file.path === path);
-          const area = target?.staged === true ? "staged" : "unstaged";
-
-          return yield* git.getFileDiff(repositoryRoot, path, area);
-        }),
-      );
-
-      // Push: tell the webview whenever the repository changes, so its
-      // cached reads are invalidated. Without this the UI only ever
-      // shows the snapshot it took at mount — staging a file from the
-      // VS Code source control view would never be reflected here.
-      //
-      // Detached because it must outlive the command that opened the
-      // panel and run for as long as the panel does. It is torn down
-      // with the panel below.
-      const pushFiber = runtime.runFork(
-        Effect.gen(function* () {
-          const repository = yield* RepositoryService;
-          yield* Stream.runForEach(repository.changes, (change) =>
-            Effect.sync(() => {
-              notifier.notify("repo.invalidate", { reason: change.reason });
-            }),
-          );
-        }),
-      );
-
-      // Tear the transport down with the *panel*, not the extension:
-      // `context.subscriptions` only fires on deactivate, so every
-      // open/close cycle would otherwise leave a fiber streaming changes
-      // into a dead webview and a live listener on a disposed panel.
-      panel.onDidDispose(() => {
-        pushFiber.interruptUnsafe();
-        client.dispose();
-      });
-    }),
+      },
+    ),
   );
 }
+
+/**
+ * The composer is bound to one repository. The SCM title passes its
+ * `SourceControl`; the command palette falls back to a picker.
+ */
+const resolveRepositoryRoot = async (
+  git: GitAPI,
+  sourceControl?: vscode.SourceControl,
+): Promise<string | undefined> => {
+  const repositories = git.repositories;
+  const sourceRoot = sourceControl?.rootUri?.fsPath;
+  if (sourceRoot !== undefined) {
+    const match = repositories.find((repository) => repository.rootUri.fsPath === sourceRoot);
+    if (match !== undefined) {
+      return match.rootUri.fsPath;
+    }
+  }
+
+  if (repositories.length === 1) {
+    return repositories[0]?.rootUri.fsPath;
+  }
+
+  if (repositories.length > 1) {
+    const pick = await vscode.window.showQuickPick(
+      repositories.map((repository) => ({
+        label: path.basename(repository.rootUri.fsPath),
+        description: repository.rootUri.fsPath,
+        root: repository.rootUri.fsPath,
+      })),
+      { title: "Patchwork · choose a repository", ignoreFocusOut: true },
+    );
+    return pick?.root;
+  }
+
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (folders.length === 1) {
+    return folders[0]?.uri.fsPath;
+  }
+  if (folders.length > 1) {
+    const pick = await vscode.window.showQuickPick(
+      folders.map((folder) => ({
+        label: folder.name,
+        description: folder.uri.fsPath,
+        root: folder.uri.fsPath,
+      })),
+      { title: "Patchwork · choose a workspace folder", ignoreFocusOut: true },
+    );
+    return pick?.root;
+  }
+
+  void vscode.window.showErrorMessage("Patchwork: no repository or workspace folder is open.");
+  return undefined;
+};
 
 export function deactivate() {}
 
@@ -190,26 +178,4 @@ const getGitAPI = async (): Promise<GitAPI> => {
   const gitExtension = extension.isActive ? extension.exports : await extension.activate();
 
   return gitExtension.getAPI(1);
-};
-
-const getHtmlForWebview = (context: vscode.ExtensionContext, webview: vscode.Webview) => {
-  const nonce = getNonce();
-
-  const scriptUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(context.extensionUri, "dist", "webview.js"),
-  );
-  const cssUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(context.extensionUri, "dist", "webview.css"),
-  );
-
-  return template
-    .replaceAll("{{NONCE}}", nonce)
-    .replaceAll("{{CSP_SOURCE}}", webview.cspSource)
-    .replaceAll("{{SCRIPT_URI}}", scriptUri.toString())
-    .replaceAll("{{CSS_URI}}", cssUri.toString());
-};
-
-const getNonce = () => {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  return Array.from({ length: 32 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 };
