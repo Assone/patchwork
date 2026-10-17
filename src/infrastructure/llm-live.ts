@@ -3,19 +3,23 @@ import { chat } from "@tanstack/ai";
 import { createAnthropicChat } from "@tanstack/ai-anthropic";
 import { createOpenaiChat } from "@tanstack/ai-openai";
 import { openaiCompatibleText } from "@tanstack/ai-openai/compatible";
+import * as vscode from "vscode";
+import { consumeStream, type StreamChunkLike } from "./llm-stream";
 import {
   type GenerateOptions,
   type GenerateResult,
   type LLMConversationMessage,
   type LLMMessage,
   LLMAuthenticationError,
+  LLMCancelledError,
   type LLMProvider,
   LLMProviderError,
   LLMService,
   type LLMSchema,
+  LLMTimeoutError,
   LLMUnknownProviderError,
 } from "../services/llm";
-import { SecretService } from "../services/secret";
+import { MissingApiKeyError, SecretService } from "../services/secret";
 
 /** Errors that bubble up from `@tanstack/ai` collapse into a single tagged error. */
 const toProviderError = (provider: LLMProvider, model: string, cause: unknown): LLMProviderError =>
@@ -40,63 +44,67 @@ const splitSystemMessages = (
   return { system, conversation };
 };
 
-/**
- * Bridge an `AbortSignal` to the `AbortController` shape `@tanstack/ai` expects.
- * The signal may already be aborted; we mirror that state on the controller.
- */
-const toAbortController = (signal: AbortSignal): AbortController => {
-  const controller = new AbortController();
-  if (signal.aborted) {
-    controller.abort();
-    return controller;
-  }
-  signal.addEventListener("abort", () => controller.abort(), { once: true });
-  return controller;
-};
+const CONFIG_SECTION = "patchwork.llm";
+const DEFAULT_IDLE_TIMEOUT_SECONDS = 120;
+const MIN_IDLE_TIMEOUT_SECONDS = 10;
 
 /**
- * The base layer for `LLMService`. Requires `SecretService` in the
- * environment; compose with `SecretServiceLive(context)` before merging into
- * the runtime (or use the `LLMServiceLive` factory below, which does this for
- * you).
+ * How long the provider may stay silent before we give up.
  *
- * The public `LLMServiceApi` exposes no `SecretService` dependency, so callers
- * that consume `LLMService` do not need to be aware of it. The dependency
- * lives here, in the layer graph, where it belongs.
+ * This is deliberately an *idle* timeout: every streamed chunk resets it.
+ * A five-minute generation that keeps producing tokens is fine; a provider
+ * that accepts the request and then hangs is not. Read per call so a
+ * settings edit applies without reloading the extension.
  */
-export const LLMServiceLiveBase: Layer.Layer<LLMService, never, SecretService> = Layer.effect(
+const idleTimeoutMs = (): number => {
+  const configured = vscode.workspace
+    .getConfiguration(CONFIG_SECTION)
+    .get<number>("idleTimeoutSeconds", DEFAULT_IDLE_TIMEOUT_SECONDS);
+  const seconds = Number.isFinite(configured) ? configured : DEFAULT_IDLE_TIMEOUT_SECONDS;
+  return Math.max(MIN_IDLE_TIMEOUT_SECONDS, seconds) * 1000;
+};
+
+export const LLMServiceLive: Layer.Layer<LLMService, never, SecretService> = Layer.effect(
   LLMService,
   Effect.gen(function* () {
-    // Pull the service up front so the implementation captures it through a
-    // normal closure, and so the `Effect.gen` body satisfies the layer's
-    // declared requirement on `SecretService`.
     const secrets = yield* SecretService;
 
     return LLMService.of({
+      // Anthropic 0.22 has no `structuredOutputStream`, so `@tanstack/ai`
+      // synthesizes one from a blocking tool-use call: no deltas and no
+      // defence against a slow plan. OpenAI and OpenAI-compatible adapters
+      // stream structured output natively.
+      streamsStructuredOutput: (model) => model.provider !== "anthropic",
+
       generate: <TSchema extends LLMSchema | undefined = undefined>(
         options: GenerateOptions<TSchema>,
       ): Effect.Effect<
         GenerateResult<TSchema>,
-        LLMAuthenticationError | LLMProviderError | LLMUnknownProviderError
+        | LLMAuthenticationError
+        | LLMProviderError
+        | LLMTimeoutError
+        | LLMCancelledError
+        | LLMUnknownProviderError
       > =>
         Effect.gen(function* () {
           const key = yield* secrets.getApiKey(options.model.provider).pipe(
-            Effect.mapError(
-              (cause): LLMAuthenticationError =>
-                new LLMAuthenticationError({
-                  provider: options.model.provider,
-                  cause,
-                }),
+            Effect.mapError((cause) =>
+              cause instanceof MissingApiKeyError
+                ? new LLMAuthenticationError({
+                    provider: options.model.provider,
+                    cause,
+                  })
+                : new LLMProviderError({
+                    provider: options.model.provider,
+                    model: options.model.model,
+                    cause,
+                  }),
             ),
           );
 
           const keyString = Redacted.value(key);
           const spec = options.model;
 
-          // Pick the right adapter. `createOpenaiChat` / `createAnthropicChat`
-          // are typed against a finite set of known model literals; users can
-          // configure arbitrary model ids, so we cast at the seam.
-          // `openaiCompatibleText` already accepts arbitrary model ids.
           let provider: LLMProvider;
           let adapter: unknown;
           switch (spec.provider) {
@@ -114,11 +122,6 @@ export const LLMServiceLiveBase: Layer.Layer<LLMService, never, SecretService> =
                 baseURL: spec.baseURL,
                 apiKey: keyString,
                 ...(spec.api !== undefined ? { api: spec.api } : {}),
-                ...(spec.name !== undefined ? { name: spec.name } : {}),
-                ...(spec.defaultQuery !== undefined ? { defaultQuery: spec.defaultQuery } : {}),
-                ...(spec.defaultHeaders !== undefined
-                  ? { defaultHeaders: spec.defaultHeaders }
-                  : {}),
               });
               break;
             default: {
@@ -132,50 +135,84 @@ export const LLMServiceLiveBase: Layer.Layer<LLMService, never, SecretService> =
 
           const { system, conversation } = splitSystemMessages(options.messages);
           const schema = options.schema as LLMSchema | undefined;
+          const timeoutMs = idleTimeoutMs();
 
-          const chatResult = yield* Effect.tryPromise({
+          const controller = new AbortController();
+          let timedOut = false;
+          let cancelled = false;
+          let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+          const disarmIdle = (): void => {
+            if (idleTimer !== undefined) {
+              clearTimeout(idleTimer);
+              idleTimer = undefined;
+            }
+          };
+
+          const armIdle = (): void => {
+            disarmIdle();
+            idleTimer = setTimeout(() => {
+              timedOut = true;
+              controller.abort(new Error(`LLM request idle for ${timeoutMs}ms`));
+            }, timeoutMs);
+          };
+
+          const abortFromCaller = (): void => {
+            cancelled = true;
+            controller.abort();
+          };
+
+          if (options.abortSignal?.aborted === true) {
+            cancelled = true;
+            controller.abort();
+          } else {
+            options.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+          }
+          armIdle();
+
+          const opened = {
+            adapter: adapter as Parameters<typeof chat>[0]["adapter"],
+            messages: [...conversation],
+            ...(system.length > 0 ? { systemPrompts: [...system] } : {}),
+            ...(schema !== undefined
+              ? { outputSchema: schema as never, stream: true as const }
+              : { stream: true as const }),
+            ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+            abortController: controller,
+          };
+
+          const result = yield* Effect.tryPromise({
             try: () =>
-              chat({
-                adapter: adapter as Parameters<typeof chat>[0]["adapter"],
-                messages: conversation,
-                ...(system.length > 0 ? { systemPrompts: system } : {}),
-                ...(schema !== undefined ? { outputSchema: schema as never } : {}),
-                stream: false,
-                ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-                ...(options.abortSignal !== undefined
-                  ? { abortController: toAbortController(options.abortSignal) }
-                  : {}),
+              consumeStream({
+                open: () => chat(opened as never) as unknown as AsyncIterable<StreamChunkLike>,
+                structured: schema !== undefined,
+                touch: armIdle,
+                ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
               }),
-            catch: (cause) => toProviderError(provider, spec.model, cause),
-          });
+            catch: (cause) => {
+              if (timedOut) {
+                return new LLMTimeoutError({ provider, model: spec.model, timeoutMs });
+              }
+              if (cancelled) {
+                return new LLMCancelledError({ provider, model: spec.model });
+              }
+              return toProviderError(provider, spec.model, cause);
+            },
+          }).pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                disarmIdle();
+                options.abortSignal?.removeEventListener("abort", abortFromCaller);
+              }),
+            ),
+          );
 
-          // Without a schema, `chat({ stream: false })` resolves to
-          // `ChatResult`; with a schema, it resolves to the validated value
-          // (typed as `unknown` here since the generic is bound at the call
-          // site via the TS schema).
           if (schema === undefined) {
-            const text = (chatResult as { text: string }).text;
-            return { text } as GenerateResult<TSchema>;
+            return { text: result.text } as GenerateResult<TSchema>;
           }
 
-          const value = chatResult as unknown;
-          const text = typeof value === "string" ? value : JSON.stringify(value);
-          return { text, value } as GenerateResult<TSchema>;
+          return { text: result.text, value: result.value } as GenerateResult<TSchema>;
         }),
     });
   }),
 );
-
-/**
- * Ready-to-use layer that pulls `SecretService` itself from a caller-supplied
- * `secretLayer` (typically `SecretServiceLive(context)`).
- *
- * @example
- *   const AppLive = Layer.mergeAll(
- *     LLMServiceLive(SecretServiceLive(context)),
- *     ...
- *   );
- */
-export const LLMServiceLive = (
-  secretLayer: Layer.Layer<SecretService, never, never>,
-): Layer.Layer<LLMService> => LLMServiceLiveBase.pipe(Layer.provide(secretLayer));
