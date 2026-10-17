@@ -1,5 +1,5 @@
 {
-  "name": "patchwork",
+  "name": "patchwork-commit-composer",
   "displayName": "Patchwork — AI Commit Composer",
   "version": "0.0.1",
   "description": "Split one large change into small, meaningful commits. Patchwork groups changed hunks with an LLM, writes commit messages, and lets you review every commit before it touches git.",
@@ -19,13 +19,24 @@
     "openai",
     "staging"
   ],
+  "homepage": "https://github.com/Assone/patchwork#readme",
+  "bugs": {
+    "url": "https://github.com/Assone/patchwork/issues"
+  },
+  "license": "MIT",
+  "author": "Assone",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Assone/patchwork.git"
+  },
+  "publisher": "Reset0",
   "main": "./dist/extension.js",
   "scripts": {
     "vscode:prepublish": "pnpm run package",
     "compile": "rspack",
     "watch": "rspack --watch",
     "package": "rspack --mode production --devtool hidden-source-map",
-    "package:vsix": "pnpm dlx @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license --no-rewrite-relative-links",
+    "package:vsix": "pnpm dlx @vscode/vsce package --no-dependencies",
     "compile-tests": "tsc -b tsconfig.test.json",
     "watch-tests": "tsc -b tsconfig.test.json --watch",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.unit.json --noEmit && tsc -p tsconfig.test.json --noEmit",

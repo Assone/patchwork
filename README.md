@@ -1,5 +1,8 @@
 # Patchwork
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![VS Code: ^1.140](https://img.shields.io/badge/VS%20Code-%5E1.140-007ACC.svg)](https://code.visualstudio.com/)
+
 Patchwork turns one large change into a series of small, meaningful commits.
 
 Select the files you want to commit, optionally describe the intent, and Patchwork
@@ -115,3 +118,12 @@ pnpm run fmt:check
 Unit tests live in `src/test/*.test.ts` and run under Vitest. Tests that need the
 VS Code extension host are named `*.integration.test.ts` and run under
 `@vscode/test-cli`.
+
+## Contributing
+
+Issues and pull requests are welcome at
+[github.com/Assone/patchwork](https://github.com/Assone/patchwork).
+
+## License
+
+[MIT](LICENSE) © 2026 ResetO
