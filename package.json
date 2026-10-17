@@ -127,6 +127,23 @@
             ],
             "default": "chat-completions",
             "markdownDescription": "Wire format for `openai-compatible` endpoints. `chat-completions` is the common case; switch to `responses` for Azure OpenAI."
+          },
+          "patchwork.llm.idleTimeoutSeconds": {
+            "type": "number",
+            "default": 120,
+            "minimum": 10,
+            "markdownDescription": "Abort a request when the provider sends **no data** for this many seconds. Every streamed chunk resets the timer, so a long but healthy generation is never cut off. Raise this if a slow local model takes a long time to produce its first token."
+          }
+        }
+      },
+      {
+        "title": "Patchwork · Commits",
+        "id": "patchwork.commits",
+        "properties": {
+          "patchwork.commits.runHooks": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Run the repository's git commit hooks by committing through `git commit` with a temporary index. This disables the atomic writer: if a hook fails mid-plan, earlier commits may already exist. Signing follows `commit.gpgSign` in both modes."
           }
         }
       }
