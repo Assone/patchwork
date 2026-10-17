@@ -1,5 +1,6 @@
 import * as assert from "assert";
-import { parser } from "../diff";
+import { describe, test } from "vitest";
+import { parser } from "../domain/diff";
 
 /**
  * Parser diagnostics, running inside the real VS Code host.
@@ -9,7 +10,7 @@ import { parser } from "../diff";
  * real host (unlike the in-memory RPC suite) so it also proves the
  * module loads under Electron's CJS loader.
  */
-suite("Unified diff parser", () => {
+describe("Unified diff parser", () => {
   test("parses a modified file into add/delete/context lines", () => {
     const raw = [
       "diff --git a/b.txt b/b.txt",

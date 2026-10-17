@@ -1,132 +1,17 @@
-export type LineChangeType = "add" | "delete" | "normal";
-export type FileChangeType = "modified" | "added" | "deleted" | "renamed" | "copy" | "mode-change";
+import {
+  DiffParseError,
+  InvalidDiffLine,
+  InvalidHunkCount,
+  InvalidHunkHeader,
+  type DiffFileKind,
+  type DiffHunk,
+  type DiffLine,
+  type DiffParseErrorCode,
+  type FileDiff,
+} from "./types";
 
-type LineNumberFields = {
-  add: { newLineNumber: number };
-  delete: { oldLineNumber: number };
-  normal: { oldLineNumber: number; newLineNumber: number };
-};
-
-type DiffLineData<T extends LineChangeType> = {
-  type: T;
-  content: string;
-  noNewlineAtEof?: boolean;
-} & LineNumberFields[T];
-
-export type DiffLine = { [K in LineChangeType]: DiffLineData<K> }[LineChangeType];
-
-export interface FileDiff {
-  oldPath: string;
-  newPath: string;
-
-  type: FileChangeType;
-
-  oldMode?: string;
-  newMode?: string;
-
-  oldHash?: string;
-  newHash?: string;
-
-  additions: number;
-  deletions: number;
-
-  similarity?: number;
-  isBinary: boolean;
-
-  hunks: DiffHunk[];
-}
-
-export interface DiffHunk {
-  header: string;
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  section?: string;
-  lines: DiffLine[];
-}
-
-export type DiffParseErrorCode =
-  | "INVALID_FILE_HEADER"
-  | "INVALID_HUNK_HEADER"
-  | "INVALID_DIFF_LINE"
-  | "INVALID_HUNK_COUNT"
-  | "INVALID_METADATA"
-  | "INVALID_NO_NEWLINE_MARKER";
-// | "HUNK_COUNT_MISMATCH";
-
-export interface DiffParseErrorInit {
-  message: string;
-  code: DiffParseErrorCode;
-  line: number;
-  content: string;
-  oldPath?: string;
-  newPath?: string;
-}
-
-export class DiffParseError extends Error {
-  readonly code: DiffParseErrorCode;
-  readonly line: number;
-  readonly content: string;
-  readonly oldPath: string | undefined;
-  readonly newPath: string | undefined;
-
-  constructor(init: DiffParseErrorInit) {
-    super(init.message);
-    this.code = init.code;
-    this.line = init.line;
-    this.content = init.content;
-    this.oldPath = init.oldPath;
-    this.newPath = init.newPath;
-
-    this.name = "DiffParseError";
-  }
-}
-
-export class InvalidHunkHeader extends DiffParseError {
-  constructor({ message, line, content, oldPath, newPath }: Omit<DiffParseErrorInit, "code">) {
-    super({
-      message,
-      code: "INVALID_HUNK_HEADER",
-      line,
-      content,
-      oldPath,
-      newPath,
-    });
-
-    this.name = "InvalidHunkHeader";
-  }
-}
-
-export class InvalidHunkCount extends DiffParseError {
-  constructor({ message, line, content, oldPath, newPath }: Omit<DiffParseErrorInit, "code">) {
-    super({
-      message,
-      code: "INVALID_HUNK_COUNT",
-      line,
-      content,
-      oldPath,
-      newPath,
-    });
-
-    this.name = "InvalidHunkCount";
-  }
-}
-
-export class InvalidDiffLine extends DiffParseError {
-  constructor({ message, line, content, oldPath, newPath }: Omit<DiffParseErrorInit, "code">) {
-    super({
-      message,
-      code: "INVALID_DIFF_LINE",
-      line,
-      content,
-      oldPath,
-      newPath,
-    });
-
-    this.name = "InvalidDiffLine";
-  }
-}
+export type { DiffFileKind, DiffHunk, DiffLine, DiffParseErrorCode, FileDiff } from "./types";
+export { DiffParseError, InvalidDiffLine, InvalidHunkCount, InvalidHunkHeader } from "./types";
 
 const simpleEscapes: Record<string, string> = {
   a: "\x07",
@@ -140,10 +25,7 @@ const simpleEscapes: Record<string, string> = {
   '"': '"',
 };
 
-export const readGitToken = (
-  input: string,
-  start = 0,
-): { value: string; next: number } | undefined => {
+const readGitToken = (input: string, start = 0): { value: string; next: number } | undefined => {
   if (start >= input.length) {
     return undefined;
   }
@@ -203,7 +85,7 @@ export const readGitToken = (
   return undefined;
 };
 
-export const parseGitFileHeader = (line: string) => {
+const parseGitFileHeader = (line: string) => {
   const prefix = "diff --git ";
 
   if (!line.startsWith(prefix)) {
@@ -233,9 +115,9 @@ export const parseGitFileHeader = (line: string) => {
   };
 };
 
-export const NULL_PATH = "/dev/null";
+const NULL_PATH = "/dev/null";
 
-export const parseFilePath = (line: string, side: "old" | "new"): string | undefined => {
+const parseFilePath = (line: string, side: "old" | "new"): string | undefined => {
   const input = line.startsWith("--- ") || line.startsWith("+++ ") ? line.slice(4) : line;
 
   const token = readGitToken(input);
@@ -268,7 +150,7 @@ interface HunkHeader {
 const HUNK_HEADER_PATTERN =
   /^@@ -(?<oldStart>\d+)(?:,(?<oldCount>\d+))? \+(?<newStart>\d+)(?:,(?<newCount>\d+))? @@(?: ?(?<section>.*))?$/;
 
-export const parseHunkHeader = (line: string, lineNumber: number): HunkHeader => {
+const parseHunkHeader = (line: string, lineNumber: number): HunkHeader => {
   const match = HUNK_HEADER_PATTERN.exec(line);
   const groups = match?.groups;
 
@@ -302,7 +184,7 @@ export const parseHunkHeader = (line: string, lineNumber: number): HunkHeader =>
   };
 };
 
-export interface DiffLineContext {
+interface DiffLineContext {
   oldLineNumber: number;
   newLineNumber: number;
   diffLineNumber: number;
@@ -310,7 +192,7 @@ export interface DiffLineContext {
   newPath?: string;
 }
 
-export const parseDiffLine = (line: string, context: DiffLineContext): DiffLine => {
+const parseDiffLine = (line: string, context: DiffLineContext): DiffLine => {
   const prefix = line[0];
   const content = line.slice(1);
 
@@ -340,7 +222,7 @@ export const parseDiffLine = (line: string, context: DiffLineContext): DiffLine 
   }
 };
 
-export const getFileType = (file: FileDiff): FileChangeType => {
+const getFileType = (file: FileDiff): DiffFileKind => {
   if (file.oldPath === "/dev/null") {
     return "added";
   }
@@ -349,7 +231,7 @@ export const getFileType = (file: FileDiff): FileChangeType => {
     return "deleted";
   }
 
-  if (file.type === "renamed" || file.type === "copy") {
+  if (file.type === "renamed" || file.type === "copied") {
     return file.type;
   }
 
@@ -366,7 +248,7 @@ export const getFileType = (file: FileDiff): FileChangeType => {
   return "modified";
 };
 
-export const validateHunk = (hunk: DiffHunk, lineNumber: number, file: FileDiff): void => {
+const validateHunk = (hunk: DiffHunk, lineNumber: number, file: FileDiff): void => {
   let oldCount = 0;
   let newCount = 0;
 
@@ -393,7 +275,10 @@ export const validateHunk = (hunk: DiffHunk, lineNumber: number, file: FileDiff)
 };
 
 export const parser = (input: string): FileDiff[] => {
-  const lines = input.split(/\r?\n/);
+  // Keep the original line endings for patch assembly. Syntax checks use
+  // `lines` (without `\r`), while `rawLines` is what `buildPatch` emits.
+  const rawLines = input.split("\n");
+  const lines = rawLines.map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
   const files: FileDiff[] = [];
 
   let currentFile: FileDiff | undefined;
@@ -402,6 +287,17 @@ export const parser = (input: string): FileDiff[] => {
   let currentHunkStartLine = 0;
   let oldLineCursor = 0;
   let newLineCursor = 0;
+  let fileStartIndex = 0;
+  let hunkStartIndex = 0;
+  let firstHunkIndex: number | undefined;
+
+  const rawSlice = (start: number, end: number): string => {
+    if (end <= start) {
+      return "";
+    }
+    const text = rawLines.slice(start, end).join("\n");
+    return text.endsWith("\n") ? text : `${text}\n`;
+  };
 
   const fail = (
     message: string,
@@ -419,26 +315,30 @@ export const parser = (input: string): FileDiff[] => {
     });
   };
 
-  const finishHunk = () => {
+  const finishHunk = (endIndex: number) => {
     if (!currentHunk || !currentFile) {
       return;
     }
 
+    currentHunk.raw = rawSlice(hunkStartIndex, endIndex);
     validateHunk(currentHunk, currentHunkStartLine, currentFile);
     currentHunk = undefined;
   };
 
-  const finishFile = (): void => {
+  const finishFile = (endIndex: number): void => {
     if (!currentFile) {
       return;
     }
 
-    finishHunk();
+    finishHunk(endIndex);
 
+    currentFile.header = rawSlice(fileStartIndex, firstHunkIndex ?? endIndex);
+    currentFile.raw = rawSlice(fileStartIndex, endIndex);
     currentFile.type = getFileType(currentFile);
     files.push(currentFile);
     currentFile = undefined;
     inBinaryPatch = false;
+    firstHunkIndex = undefined;
   };
 
   const startFile = (paths: { oldPath: string; newPath: string }): void => {
@@ -449,6 +349,8 @@ export const parser = (input: string): FileDiff[] => {
       additions: 0,
       deletions: 0,
       isBinary: false,
+      header: "",
+      raw: "",
       hunks: [],
     };
   };
@@ -458,7 +360,9 @@ export const parser = (input: string): FileDiff[] => {
     const lineNumber = index + 1;
 
     if (line.startsWith("diff --git ")) {
-      finishFile();
+      finishFile(index);
+      fileStartIndex = index;
+      firstHunkIndex = undefined;
 
       const paths = parseGitFileHeader(line);
 
@@ -489,20 +393,24 @@ export const parser = (input: string): FileDiff[] => {
     }
 
     if (line.startsWith("GIT binary patch")) {
-      finishHunk();
+      finishHunk(index);
       currentFile.isBinary = true;
       inBinaryPatch = true;
       continue;
     }
 
     if (/^Binary files .+ differ$/.test(line)) {
-      finishHunk();
+      finishHunk(index);
       currentFile.isBinary = true;
       continue;
     }
 
     if (line.startsWith("@@")) {
-      finishHunk();
+      finishHunk(index);
+      if (firstHunkIndex === undefined) {
+        firstHunkIndex = index;
+      }
+      hunkStartIndex = index;
 
       const header = parseHunkHeader(line, lineNumber);
 
@@ -514,6 +422,7 @@ export const parser = (input: string): FileDiff[] => {
         newLines: header.newCount,
         section: header.section,
         lines: [],
+        raw: "",
       };
 
       currentHunkStartLine = lineNumber;
@@ -642,13 +551,13 @@ export const parser = (input: string): FileDiff[] => {
 
     if (line.startsWith("copy from ")) {
       currentFile.oldPath = line.slice("copy from ".length);
-      currentFile.type = "copy";
+      currentFile.type = "copied";
       continue;
     }
 
     if (line.startsWith("copy to ")) {
       currentFile.newPath = line.slice("copy to ".length);
-      currentFile.type = "copy";
+      currentFile.type = "copied";
       continue;
     }
 
@@ -689,7 +598,7 @@ export const parser = (input: string): FileDiff[] => {
     return fail("Unsupported or invalid file metadata", "INVALID_METADATA", lineNumber, line);
   }
 
-  finishFile();
+  finishFile(lines.length);
 
   return files;
 };
