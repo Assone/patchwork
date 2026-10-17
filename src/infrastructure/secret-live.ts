@@ -12,6 +12,7 @@ export const SecretServiceLive = (context: vscode.ExtensionContext) =>
           try: () => context.secrets.get(secretKey(provider)),
           catch: (cause) =>
             new SecretStorageError({
+              message: `Could not read the ${provider} API key from secret storage.`,
               operation: "get",
               provider,
               cause,
@@ -19,7 +20,12 @@ export const SecretServiceLive = (context: vscode.ExtensionContext) =>
         });
 
         if (key === undefined || key.length === 0) {
-          return yield* Effect.fail(new MissingApiKeyError({ provider }));
+          return yield* Effect.fail(
+            new MissingApiKeyError({
+              message: `No API key configured for ${provider}`,
+              provider,
+            }),
+          );
         }
 
         return Redacted.make(key);
@@ -30,6 +36,7 @@ export const SecretServiceLive = (context: vscode.ExtensionContext) =>
         try: () => context.secrets.store(secretKey(provider), key),
         catch: (cause) =>
           new SecretStorageError({
+            message: `Could not store the ${provider} API key in secret storage.`,
             operation: "store",
             provider,
             cause,
@@ -41,6 +48,7 @@ export const SecretServiceLive = (context: vscode.ExtensionContext) =>
         try: () => context.secrets.delete(secretKey(provider)),
         catch: (cause) =>
           new SecretStorageError({
+            message: `Could not delete the ${provider} API key from secret storage.`,
             operation: "delete",
             provider,
             cause,

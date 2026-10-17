@@ -1,10 +1,12 @@
 import { Context, Data, Effect, Redacted } from "effect";
 
 export class MissingApiKeyError extends Data.TaggedError("MissingApiKeyError")<{
+  readonly message: string;
   readonly provider: string;
 }> {}
 
 export class SecretStorageError extends Data.TaggedError("SecretStorageError")<{
+  readonly message: string;
   readonly operation: "get" | "store" | "delete";
   readonly provider: string;
   readonly cause: unknown;
