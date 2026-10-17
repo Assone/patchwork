@@ -27,7 +27,7 @@
     "src/webview",
     "src/rpc/protocol.ts",
     "src/rpc/git-types.ts",
-    "src/diff.ts",
+    "src/utils/diff.ts",
     "src/env.d.ts"
   ]
 }
