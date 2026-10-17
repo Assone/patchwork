@@ -1,71 +1,89 @@
-# patchwork README
+# Patchwork
 
-This is the README for your extension "patchwork". After writing up a brief description, we recommend including the following sections.
+Patchwork turns one large change into a series of small, meaningful commits.
 
-## Features
+Select the files you want to commit, optionally describe the intent, and Patchwork
+splits their **hunks** into coherent commits with LLM-written messages that follow
+the [Angular commit message convention](https://github.com/angular/angular/blob/main/contributing-docs/commit-message-guidelines.md)
+by default (`type(scope): subject`, imperative lowercase subject, optional
+body/footer). A custom prompt can request a different format or language, and you can
+review and edit every message before anything is written to git.
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+## How it works
 
-For example if there is an image subfolder under your extension project workspace:
+1. The host reads the selected files as one `HEAD → working tree` diff, so staged and
+   unstaged changes in the same file are considered together.
+2. Each hunk becomes an opaque unit with a stable ID. Added, deleted, renamed,
+   binary, mode-only, and lock files are **atomic** units because they cannot be
+   split into independently applicable patches.
+3. The LLM receives the units (never raw file metadata) and returns a partition:
+   commit messages plus the unit IDs belonging to each commit.
+4. The host validates that every unit appears exactly once, attaches lock-file units
+   to the commit holding their manifest, and shows the result for review.
+5. On confirm, the host rebuilds the units from the current diff (a stale plan is
+   rejected), applies each commit's hunks to a temporary index, writes commit
+   objects, and updates the branch ref atomically.
 
-\!\[feature X\]\(images/feature-x.png\)
+Responses are streamed. The composer shows the live elapsed time and how much output
+has arrived, and a Cancel button stops the provider request in the extension host.
+The request is bounded by `patchwork.llm.idleTimeoutSeconds` (default 120 s) of
+**silence**, not by total wall-clock time, so a slow but steady generation may run as
+long as it needs.
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+## Settings
 
-## Requirements
+Patchwork uses one of:
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+| Provider          | Required settings                                                                                               |
+| ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| OpenAI            | `patchwork.llm.model` + API key                                                                                 |
+| Anthropic         | `patchwork.llm.model` + API key                                                                                 |
+| OpenAI-compatible | `patchwork.llm.model`, `patchwork.llm.baseURL`, API key, optional `chat-completions` or `responses` wire format |
 
-## Extension Settings
+`patchwork.llm.idleTimeoutSeconds` controls how long the host waits for the next
+chunk before giving up (default 120).
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+The settings panel (`Patchwork · Settings`) writes these and stores the API key in
+VS Code's encrypted secret storage.
 
-For example:
+## Safety
 
-This extension contributes the following settings:
+- Commit writing uses a temporary index, `git write-tree`, `git commit-tree`, and a
+  compare-and-swap `git update-ref`. A failure before the ref update leaves HEAD,
+  the index, and the working tree untouched.
+- GPG signing follows `commit.gpgSign` in both commit modes.
+- Hooks are off by default. Set `patchwork.commits.runHooks` to commit through
+  `git commit` (still with a temporary index) so `pre-commit`, `commit-msg`, and
+  `post-commit` run. This mode is **not atomic**: a hook failure after the first
+  commit leaves the earlier commits on the branch.
+- Only paths touched by the plan are re-synced in the real index. Unrelated staged
+  changes keep their state; unselected hunks of a selected file become unstaged.
+- Merge, rebase, cherry-pick, unmerged files, and a locked index are rejected before
+  writing.
+- Binary files, renames, mode-only changes, and added/deleted files are committed as
+  whole-file units. Empty added files and submodule (gitlink) changes are supported.
+- A timed-out commit request is never retried automatically; the retry reuses an
+  idempotency key.
 
-- `myExtension.enable`: Enable/disable this extension.
-- `myExtension.thing`: Set to `blah` to do something.
+## Limitations
 
-## Known Issues
+- A file whose only change is a mode change is committed as a whole-file unit.
+- In `runHooks` mode, hooks may modify the working tree; those changes are not part
+  of the commit unless the hook stages them.
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+See [docs/architecture.md](docs/architecture.md) for the module map and invariants.
 
-## Release Notes
+## Development
 
-Users appreciate release notes as you update your extension.
+```bash
+pnpm install
+pnpm run compile          # extension + webview bundles
+pnpm run test:unit        # Vitest, pure Node
+pnpm run test:integration # vscode-test, extension host
+pnpm run lint
+pnpm run fmt:check
+```
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-- [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-- Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-- Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-- Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-- [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-- [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+Unit tests live in `src/test/*.test.ts` and run under Vitest. Tests that need the
+VS Code extension host are named `*.integration.test.ts` and run under
+`@vscode/test-cli`.
