@@ -11,6 +11,9 @@ review and edit every message before anything is written to git.
 
 ## How it works
 
+When the composer opens, files that already have staged changes (including partially
+staged files) are selected; unstaged and untracked files stay opt-in.
+
 1. The host reads the selected files as one `HEAD → working tree` diff, so staged and
    unstaged changes in the same file are considered together.
 2. Each hunk becomes an opaque unit with a stable ID. Added, deleted, renamed,
