@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRpc } from "../rpc-context";
-import { parser, type FileDiff } from "../../diff";
+import { parser, type FileDiff } from "../../domain/diff";
 import { repoKeys, HOST_READ_TIMEOUT_MS } from "./queryKeys";
 
 /**

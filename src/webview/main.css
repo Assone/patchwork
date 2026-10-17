@@ -24,7 +24,14 @@
   --color-input-background: var(--vscode-input-background);
   --color-input-foreground: var(--vscode-input-foreground);
   --color-input-border: var(--vscode-input-border, transparent);
+  --color-input-placeholder: var(--vscode-input-placeholderForeground, #8b8b8b);
+  --color-checkbox-background: var(--vscode-checkbox-background, transparent);
   --color-checkbox-border: var(--vscode-checkbox-border, #6b6b6b);
+  --color-checkbox-select-background: var(
+    --vscode-checkbox-selectBackground,
+    var(--vscode-focusBorder)
+  );
+  --color-checkbox-select-border: var(--vscode-checkbox-selectBorder, var(--vscode-focusBorder));
 
   /* Buttons */
   --color-button-background: var(--vscode-button-background);
@@ -76,4 +83,56 @@ body,
   color: var(--color-foreground);
   font-family: var(--font-ui);
   font-size: 13px;
+}
+
+/* Match native controls (select, scrollbars, form widgets) to the theme. */
+body.vscode-dark,
+body.vscode-high-contrast {
+  color-scheme: dark;
+}
+
+body.vscode-light,
+body.vscode-high-contrast-light {
+  color-scheme: light;
+}
+
+button,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+::selection {
+  background: var(--vscode-editor-selectionBackground);
+}
+
+/* Chromium scrollbars, themed like the editor. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin {
+    animation: none;
+  }
+
+  .transition-transform {
+    transition: none;
+  }
 }

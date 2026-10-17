@@ -1,36 +1,44 @@
 import { memo } from "react";
-import type { FileDiff } from "../../diff";
+import type { FileDiff } from "../../domain/diff";
 import { DiffBody } from "./DiffBody";
 
-/**
- * Single-file diff pane for the composer route.
- *
- * Shows whichever source file is focused in the file tree. The header
- * strip shares `--header-h` with the sidebar's selection header so the
- * two panes' top edges line up.
- *
- * `FileDiff | undefined` because the focused file may have no diff
- * (unchanged, untracked-but-not-staged, binary). The view renders a
- * dedicated empty state in that case so the user isn't left wondering.
- */
 export interface DiffViewProps {
   readonly path: string | null;
   readonly file: FileDiff | undefined;
+  readonly loading: boolean;
+  readonly error: Error | null;
 }
 
-const DiffViewImpl: React.FC<DiffViewProps> = ({ path, file }) => {
+const DiffViewImpl: React.FC<DiffViewProps> = ({ path, file, loading, error }) => {
   return (
-    <div className="border-border bg-background flex flex-1 flex-col overflow-hidden border-r">
+    <div className="border-border bg-background flex min-w-0 flex-1 flex-col overflow-hidden border-r">
       <header
         className="border-border font-editor text-foreground-muted flex items-center border-b px-3 text-[12px]"
         style={{ height: "var(--header-h)" }}
       >
-        {path ?? "No file selected"}
+        <span className="min-w-0 truncate">{path ?? "No file selected"}</span>
         {file !== undefined && <FileStats file={file} />}
       </header>
       {path === null ? (
         <div className="text-foreground-muted flex flex-1 items-center justify-center">
           Select a file to view its diff.
+        </div>
+      ) : error !== null ? (
+        <div
+          className="flex flex-1 items-center justify-center px-4 text-center break-words"
+          style={{ color: "var(--color-badge-deleted)" }}
+          role="alert"
+        >
+          Could not read the diff: {error.message}
+        </div>
+      ) : loading ? (
+        <div
+          className="text-foreground-muted flex flex-1 items-center justify-center"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          Loading diff…
         </div>
       ) : file === undefined ? (
         <div className="text-foreground-muted flex flex-1 items-center justify-center">
@@ -46,7 +54,7 @@ const DiffViewImpl: React.FC<DiffViewProps> = ({ path, file }) => {
           No diff available for {path}.
         </div>
       ) : (
-        <div className="font-editor flex-1 overflow-auto text-[12px] leading-4.5">
+        <div className="font-editor flex-1 overflow-auto overscroll-contain text-[12px] leading-4.5">
           <DiffBody file={file} />
         </div>
       )}
@@ -54,16 +62,14 @@ const DiffViewImpl: React.FC<DiffViewProps> = ({ path, file }) => {
   );
 };
 
-/**
- * `+N −M` counts, plus the rename/added/deleted marker git gave us.
- * These are already computed by the parser; showing them keeps the pane
- * from losing information the diff clearly carries.
- */
 const FileStats: React.FC<{ file: FileDiff }> = ({ file }) => {
-  const moved = file.oldPath !== file.newPath ? ` ${file.oldPath} → ${file.newPath}` : "";
+  const moved =
+    file.oldPath !== "/dev/null" && file.newPath !== "/dev/null" && file.oldPath !== file.newPath
+      ? ` ${file.oldPath} → ${file.newPath}`
+      : "";
 
   return (
-    <span className="ml-2 flex items-center gap-2 text-[11px]">
+    <span className="ml-2 flex shrink-0 items-center gap-2 text-[11px]">
       {file.type !== "modified" && <span className="opacity-80">{file.type}</span>}
       {moved !== "" && <span className="opacity-80">{moved}</span>}
       <span className="text-badge-added">+{file.additions}</span>
@@ -72,9 +78,4 @@ const FileStats: React.FC<{ file: FileDiff }> = ({ file }) => {
   );
 };
 
-/**
- * `memo` keeps the diff pane from re-rendering while the message
- * textarea updates on every keystroke — its props change only when the
- * focused path or its diff actually changes.
- */
 export const DiffView = memo(DiffViewImpl);

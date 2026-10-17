@@ -1,5 +1,5 @@
-import { memo, useEffect, useState } from "react";
-import type { FileDiff } from "../../diff";
+import { memo, useEffect, useMemo, useState } from "react";
+import type { FileDiff } from "../../domain/diff";
 import { cn } from "../utils/cn";
 import { buildDiffRows, type DiffRow, type LineRow } from "../utils/diffRows";
 import {
@@ -9,37 +9,25 @@ import {
   type RenderPiece,
 } from "../utils/highlight";
 
-/**
- * Renders one file's diff.
- *
- * Rows come from `buildDiffRows`, which supplies three kinds:
- *
- *  - **hunk** — an `@@ -a,b +c,d @@` separator, including git's `section`
- *    context (the enclosing function) when it gave one;
- *  - **gap** — unchanged lines that aren't part of the diff at all, so a
- *    line-number jump like 22 → 109 is explicitly explained instead of
- *    looking like dropped output;
- *  - **line** — a real diff line, optionally carrying word-level segments
- *    so only the changed words are highlighted.
- */
 export interface DiffBodyProps {
   readonly file: FileDiff;
 }
 
 export const DiffBody: React.FC<DiffBodyProps> = memo(function DiffBody({ file }) {
-  const rows = buildDiffRows(file);
-  const language = languageForPath(file.newPath);
+  const rows = useMemo(() => buildDiffRows(file), [file]);
+  const displayPath = file.newPath === "/dev/null" ? file.oldPath : file.newPath;
+  const language = languageForPath(displayPath);
 
   return (
-    // `w-max` lets the block grow to its widest line so the add/delete
-    // background stripes keep extending once the pane scrolls
-    // horizontally; `min-w-full` guarantees the stripe still reaches the
-    // right edge when the content is narrower than the pane.
-    <pre className="m-0 w-max min-w-full">
+    <div className="w-max min-w-full">
       {rows.map((row, index) => (
-        <DiffRowView key={index} row={row} language={language} />
+        <DiffRowView
+          key={`${row.kind}:${row.kind === "line" ? `${row.oldNumber}:${row.newNumber}` : index}`}
+          row={row}
+          language={language}
+        />
       ))}
-    </pre>
+    </div>
   );
 });
 
@@ -77,38 +65,44 @@ const DiffRowView: React.FC<{ row: DiffRow; language: string | undefined }> = ({
   return <DiffLineRow row={row} language={language} />;
 };
 
-/**
- * Highlights asynchronously and falls back to plain text. Highlighting
- * is cosmetic, so a missing grammar must never block rendering.
- */
+interface HighlightState {
+  readonly key: string;
+  readonly pieces: readonly RenderPiece[];
+}
+
+// The key prevents a reused line from briefly showing stale tokens.
 function useHighlightedPieces(row: LineRow, language: string | undefined) {
-  const [pieces, setPieces] = useState<readonly RenderPiece[] | undefined>(undefined);
+  const [state, setState] = useState<HighlightState | undefined>(undefined);
   const text = row.line.content;
+  const key = `${language ?? ""}\0${text}`;
 
   useEffect(() => {
     if (language === undefined) {
-      setPieces(undefined);
       return;
     }
     let cancelled = false;
     void (async () => {
-      const tokens = await highlightLine(text, language);
-      if (cancelled) {
-        return;
+      try {
+        const tokens = await highlightLine(text, language);
+        if (!cancelled) {
+          setState({
+            key,
+            pieces: mergeSegments(tokens ?? [{ text, color: undefined }], row.segments),
+          });
+        }
+      } catch {
+        // Highlighting is cosmetic; fall through to plain text.
       }
-      setPieces(mergeSegments(tokens ?? [{ text, color: undefined }], row.segments));
     })();
     return () => {
       cancelled = true;
     };
-  }, [text, language, row.segments]);
+  }, [key, text, language, row.segments]);
 
-  // Until Shiki answers (or when it can't), render the plain text with
-  // the word-diff segments applied.
-  if (pieces === undefined) {
+  if (state?.key !== key) {
     return mergeSegments([{ text, color: undefined }], row.segments);
   }
-  return pieces;
+  return state.pieces;
 }
 
 const DiffLineRow: React.FC<{ row: LineRow; language: string | undefined }> = ({
@@ -130,13 +124,13 @@ const DiffLineRow: React.FC<{ row: LineRow; language: string | undefined }> = ({
     >
       <span
         aria-hidden
-        className="text-diff-line-number-foreground w-10 shrink-0 pr-2 text-right select-none"
+        className="text-diff-line-number-foreground w-10 shrink-0 pr-2 text-right tabular-nums select-none"
       >
         {row.oldNumber ?? ""}
       </span>
       <span
         aria-hidden
-        className="text-diff-line-number-foreground w-10 shrink-0 pr-2 text-right select-none"
+        className="text-diff-line-number-foreground w-10 shrink-0 pr-2 text-right tabular-nums select-none"
       >
         {row.newNumber ?? ""}
       </span>

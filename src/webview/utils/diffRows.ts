@@ -1,21 +1,7 @@
-import type { DiffLine, FileDiff } from "../../diff";
+import type { DiffLine, FileDiff } from "../../domain/diff";
 import { diffWords, type WordSegment } from "./diffWords";
 
-/**
- * Groups a parsed diff into the renderable rows the diff pane needs.
- *
- * The parser gives us hunks with their own line ranges, but a UI needs
- * two things it doesn't spell out:
- *
- *  1. **Gaps.** Between hunks (and before the first one) there are runs
- *     of unchanged lines that simply aren't in the diff. Without an
- *     explicit marker, line numbers appear to jump — 22 then 109 — and
- *     the reader can't tell whether something was lost.
- *  2. **Change pairs.** A `-` line followed by `+` lines is one edit.
- *     Pairing them lets us word-highlight the actual change instead of
- *     repainting whole lines.
- */
-
+// Gaps make line-number jumps explicit; delete/add pairs drive word diffs.
 export interface GapRow {
   readonly kind: "gap";
   readonly count: number;
@@ -24,7 +10,6 @@ export interface GapRow {
 export interface HunkRow {
   readonly kind: "hunk";
   readonly header: string;
-  /** Function/scope context git put after the `@@`, when present. */
   readonly section: string | undefined;
 }
 
@@ -33,19 +18,12 @@ export interface LineRow {
   readonly line: DiffLine;
   readonly oldNumber: number | null;
   readonly newNumber: number | null;
-  /** Present only when this line is part of a word-diffable pair. */
   readonly segments: readonly WordSegment[] | undefined;
 }
 
 export type DiffRow = GapRow | HunkRow | LineRow;
 
-/**
- * Smallest run of hidden lines worth a gap marker: any line at all is
- * enough for the numbering to jump, so a gap of 1 still gets explained.
- */
 const MIN_GAP_LINES = 1;
-
-/** Consecutive context lines are collapsed into a single filler row. */
 const CONTEXT_FILLER_THRESHOLD = 8;
 
 export function buildDiffRows(file: FileDiff): readonly DiffRow[] {
@@ -63,7 +41,11 @@ export function buildDiffRows(file: FileDiff): readonly DiffRow[] {
       rows.push({ kind: "gap", count: gap });
     }
 
-    rows.push({ kind: "hunk", header: hunk.header, section: hunk.section });
+    // `hunk.header` still contains git's trailing section text; keep
+    // the marker and section separate so the renderer shows it once.
+    const markerEnd = hunk.header.indexOf("@@", 2);
+    const header = markerEnd === -1 ? hunk.header : hunk.header.slice(0, markerEnd + 2);
+    rows.push({ kind: "hunk", header, section: hunk.section });
 
     // Walk the hunk, pairing delete runs with the add runs that follow.
     const lines = hunk.lines;

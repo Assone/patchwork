@@ -1,5 +1,6 @@
-import { createContext, useContext, type ReactNode } from "react";
-import { useSubmission, type UseSubmission } from "./hooks/useSubmission";
+import { createContext, use, type ReactNode } from "react";
+import { useSubmission } from "./hooks/useSubmission";
+import type { UseSubmission } from "./domain/submission";
 
 /**
  * Shares the multi-step commit-submission state across all routes.
@@ -24,7 +25,7 @@ export const SubmissionProvider: React.FC<SubmissionProviderProps> = ({ children
 
 /** Throws when used outside the provider — the dependency is hard. */
 export function useSubmissionContext(): UseSubmission {
-  const value = useContext(SubmissionContext);
+  const value = use(SubmissionContext);
   if (value === null) {
     throw new Error("useSubmissionContext must be used within SubmissionProvider");
   }

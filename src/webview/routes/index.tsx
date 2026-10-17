@@ -1,15 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { useChangedFiles } from "../hooks/useChangedFiles";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo } from "react";
 import { useFocusedFileDiff } from "../hooks/useFocusedFileDiff";
-import { useSelection } from "../hooks/useSelection";
+import { useLLMConfigured } from "../hooks/useLLMConfigured";
+import { useComposerState } from "../composer-context";
 import { useSubmissionContext } from "../submission-context";
+import { buttonClassName } from "../components/Button";
 import { DiffView } from "../components/DiffView";
 import { FileTree } from "../components/FileTree";
 import { SelectionHeader } from "../components/SelectionHeader";
 import { useFocus } from "../hooks/useFocus";
-import { ComposerForm } from "../components/ComposerForm";
+import { ConfiguredComposer, UnconfiguredComposer } from "../components/composer/Composer";
 import { WaitingScreen } from "../components/WaitingScreen";
 
 /**
@@ -20,17 +20,15 @@ export const Route = createFileRoute("/")({
 });
 
 function IndexView() {
-  const changedFiles = useChangedFiles();
-  const selection = useSelection();
+  const { changedFiles, selection, prompt, setPrompt } = useComposerState();
   const focus = useFocus();
-  const { status, generate } = useSubmissionContext();
+  const { status, generate, cancel } = useSubmissionContext();
   const navigate = useNavigate();
-  const [prompt, setPrompt] = useState("");
+  const configured = useLLMConfigured();
 
-  // Auto-navigate to the review page once generation succeeds.
   useEffect(() => {
     if (status.kind === "reviewing") {
-      navigate({ to: "/review" });
+      void navigate({ to: "/review" });
     }
   }, [status, navigate]);
 
@@ -43,32 +41,49 @@ function IndexView() {
     () => changedFiles.files.map((file) => file.path),
     [changedFiles.files],
   );
+  const replaceSelection = selection.replace;
   const handleSelectAll = useCallback(() => {
-    selection.replace(selectAllPaths);
-  }, [selection.replace, selectAllPaths]);
+    replaceSelection(selectAllPaths);
+  }, [replaceSelection, selectAllPaths]);
+
+  // Restrict the selection to files the host still reports. A selected
+  // path can disappear when the user reverts or stages it elsewhere, and
+  // `useSelection` has no file list of its own to prune against — using
+  // the raw `selection.count` here would leave the Generate button
+  // enabled for a request that ends up with zero files.
+  const selectedFiles = useMemo(
+    () => changedFiles.files.filter((file) => selection.selected.has(file.path)),
+    [changedFiles.files, selection.selected],
+  );
 
   const handleSubmit = useCallback(() => {
-    if (selection.count === 0) {
+    if (selectedFiles.length === 0) {
       return;
     }
-    const selected = changedFiles.files.filter((file) => selection.selected.has(file.path));
     generate({
       message: prompt.trim(),
-      files: selected.map((file) => ({ path: file.path, type: file.type })),
+      paths: selectedFiles.map((file) => file.path),
     });
-  }, [prompt, selection, changedFiles, generate]);
+  }, [prompt, selectedFiles, generate]);
 
   if (status.kind === "submitting") {
-    return <WaitingScreen />;
+    return (
+      <WaitingScreen startedAt={status.startedAt} progress={status.progress} onCancel={cancel} />
+    );
   }
 
   return (
-    <div className="bg-background-sidebar flex h-screen">
-      <DiffView path={focus.id} file={focusedDiff.file} />
+    <div className="bg-background-sidebar flex h-full">
+      <DiffView
+        path={focus.id}
+        file={focusedDiff.file}
+        loading={focusedDiff.loading}
+        error={focusedDiff.error}
+      />
 
-      <aside className="border-border flex w-72 flex-col border-l">
+      <aside className="border-border flex min-h-0 w-80 shrink-0 flex-col border-l">
         <SelectionHeader
-          count={selection.count}
+          count={selectedFiles.length}
           total={changedFiles.files.length}
           onSelectAll={handleSelectAll}
           onClear={selection.clear}
@@ -77,16 +92,32 @@ function IndexView() {
           files={changedFiles.files}
           selected={selection.selected}
           focusedPath={focus.id}
+          loading={changedFiles.loading}
+          error={changedFiles.error}
+          onRetry={changedFiles.refetch}
           onToggle={selection.toggle}
           onFocus={focus.focus}
         />
-        <ComposerForm
-          disabled={selection.count === 0}
-          onSubmit={handleSubmit}
-          errorReason={status.kind === "error" ? status.reason : null}
-          prompt={prompt}
-          setPrompt={setPrompt}
-        />
+        {configured === false ? (
+          <UnconfiguredComposer
+            prompt={prompt}
+            setPrompt={setPrompt}
+            errorReason={status.kind === "error" ? status.reason : null}
+            configureAction={
+              <Link to="/settings" className={buttonClassName("primary")}>
+                Configure Model
+              </Link>
+            }
+          />
+        ) : (
+          <ConfiguredComposer
+            prompt={prompt}
+            setPrompt={setPrompt}
+            disabled={selectedFiles.length === 0}
+            errorReason={status.kind === "error" ? status.reason : null}
+            onSubmit={handleSubmit}
+          />
+        )}
       </aside>
     </div>
   );

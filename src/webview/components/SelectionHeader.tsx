@@ -1,15 +1,5 @@
 import { memo } from "react";
 
-/**
- * Header for the file list: shows how many files are selected and offers
- * bulk actions.
- *
- * The header is presentational — it receives `count` and `total` as
- * primitives plus two stable callbacks, so `memo` keeps it from
- * re-rendering on every keystroke in the prompt textarea. Both
- * callbacks are `useCallback`-wrapped at the call site; a fresh arrow
- * function passed as a prop would defeat the memo.
- */
 export interface SelectionHeaderProps {
   readonly count: number;
   readonly total: number;

@@ -1,23 +1,13 @@
 import type { ChangedFile } from "../rpc/git-types";
 
-/**
- * A directory node in the changed-files tree.
- *
- * Directories own their children; files are leaves carrying the change
- * metadata. Intermediate directories are only created for paths that
- * actually lead to a changed file, so there are never empty folders.
- */
 export interface TreeDir {
   readonly kind: "dir";
-  /** Full path from the repo root, e.g. `src/webview/components`. */
   readonly path: string;
-  /** Last path segment only, e.g. `components`. */
   readonly name: string;
   readonly depth: number;
   readonly children: readonly TreeNode[];
 }
 
-/** A changed-file leaf. */
 export interface TreeFile {
   readonly kind: "file";
   readonly path: string;
@@ -28,22 +18,35 @@ export interface TreeFile {
 
 export type TreeNode = TreeDir | TreeFile;
 
-/**
- * Builds a directory tree from a flat list of changed files.
- *
- * Paths are treated as `/`-separated and repo-root-relative. Siblings are
- * sorted directories-first, then case-insensitively by name — the same
- * ordering VS Code uses in its explorer views.
- *
- * The result is fully deterministic and independent of input order, which
- * keeps `memo` comparisons stable.
- */
+// Deterministic and independent of input order, so `memo` stays stable.
 export function buildFileTree(files: readonly ChangedFile[]): readonly TreeNode[] {
   const root = new MutableDir("", "");
   for (const file of files) {
-    root.insert(file);
+    insertPath(root, file);
   }
   return root.finalise(0);
+}
+
+function insertPath(root: MutableDir, file: ChangedFile): void {
+  const segments = file.path.split("/").filter(Boolean);
+  const fileName = segments.pop();
+  if (fileName === undefined) {
+    return;
+  }
+
+  let cursor = root;
+  for (const segment of segments) {
+    const existing = cursor.children.get(segment);
+    if (existing instanceof MutableDir) {
+      cursor = existing;
+      continue;
+    }
+    const child = new MutableDir(cursor.path ? `${cursor.path}/${segment}` : segment, segment);
+    cursor.children.set(segment, child);
+    cursor = child;
+  }
+
+  cursor.children.set(fileName, file);
 }
 
 /**
@@ -58,30 +61,6 @@ class MutableDir {
     readonly path: string,
     readonly name: string,
   ) {}
-
-  insert(file: ChangedFile): void {
-    const segments = file.path.split("/").filter(Boolean);
-    const fileName = segments.pop();
-    if (fileName === undefined) {
-      return;
-    }
-
-    let cursor: MutableDir = this;
-    for (const segment of segments) {
-      const existing = cursor.children.get(segment);
-      if (existing instanceof MutableDir) {
-        cursor = existing;
-        continue;
-      }
-      // A file already occupied this name; the directory wins because a
-      // changed file can never also be a parent directory.
-      const child = new MutableDir(cursor.path ? `${cursor.path}/${segment}` : segment, segment);
-      cursor.children.set(segment, child);
-      cursor = child;
-    }
-
-    cursor.children.set(fileName, file);
-  }
 
   finalise(depth: number): readonly TreeNode[] {
     const dirs: TreeDir[] = [];
@@ -117,25 +96,6 @@ class MutableDir {
 
     return [...dirs, ...files];
   }
-}
-
-/**
- * Collects every directory path in the tree, depth-first.
- *
- * Used by `collapseAll` to snapshot the full set in one pass.
- */
-export function allDirPaths(nodes: readonly TreeNode[]): readonly string[] {
-  const paths: string[] = [];
-  const walk = (list: readonly TreeNode[]) => {
-    for (const node of list) {
-      if (node.kind === "dir") {
-        paths.push(node.path);
-        walk(node.children);
-      }
-    }
-  };
-  walk(nodes);
-  return paths;
 }
 
 /**

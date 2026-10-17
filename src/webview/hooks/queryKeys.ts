@@ -7,6 +7,11 @@
  * whole repository" on every keystroke-scale notification would throw
  * away diffs that are still perfectly valid.
  */
+export const llmKeys = {
+  all: ["llm"] as const,
+  config: () => [...llmKeys.all, "config"] as const,
+};
+
 export const repoKeys = {
   all: ["repo"] as const,
   /** The changed-file list for the current repository. */

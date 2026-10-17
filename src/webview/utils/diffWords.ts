@@ -1,4 +1,4 @@
-import type { DiffLine } from "../../diff";
+import type { DiffLine } from "../../domain/diff";
 
 /**
  * Word-level diff between a deleted and an added line.

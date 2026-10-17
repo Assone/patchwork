@@ -1,5 +1,6 @@
 import * as assert from "assert";
-import { parser } from "../diff";
+import { describe, test } from "vitest";
+import { parser } from "../domain/diff";
 import { buildDiffRows } from "../webview/utils/diffRows";
 import { diffWords } from "../webview/utils/diffWords";
 
@@ -39,7 +40,7 @@ const WITH_GAP_BEFORE = [
   "",
 ].join("\n");
 
-suite("diff rows", () => {
+describe("diff rows", () => {
   test("marks the unchanged lines before the first hunk", () => {
     const file = parseOne(WITH_GAP_BEFORE);
 
@@ -103,8 +104,32 @@ suite("diff rows", () => {
 
     const hunk = buildDiffRows(file).find((row) => row.kind === "hunk");
     assert.ok(hunk?.kind === "hunk");
-    assert.strictEqual(hunk.header, "@@ -1 +1 @@ function greet()");
+    assert.strictEqual(hunk.header, "@@ -1 +1 @@");
     assert.strictEqual(hunk.section, "function greet()");
+  });
+
+  test("keeps a deletion-only run as delete rows", () => {
+    const file = parseOne(
+      [
+        "diff --git a/f.rs b/f.rs",
+        "--- a/f.rs",
+        "+++ b/f.rs",
+        "@@ -310,7 +310,3 @@ fn dispose() {",
+        "         clear();",
+        "     })",
+        " }",
+        "-",
+        "-pub fn add(a: i32, b: i32) -> i32 {",
+        "-    a + b",
+        "-}",
+        "",
+      ].join("\n"),
+    );
+
+    const rows = buildDiffRows(file);
+    const lines = rows.filter((row) => row.kind === "line");
+    assert.strictEqual(lines.filter((row) => row.line.type === "delete").length, 4);
+    assert.strictEqual(lines.filter((row) => row.line.type === "normal").length, 3);
   });
 
   test("pairs a delete with its add and provides word segments", () => {

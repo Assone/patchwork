@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRpc } from "../rpc-context";
 import type { ChangedFile } from "../../rpc/git-types";
@@ -18,6 +19,7 @@ export interface ChangedFilesState {
   readonly files: readonly ChangedFile[];
   readonly loading: boolean;
   readonly error: Error | null;
+  readonly refetch: () => void;
 }
 
 export function useChangedFiles(): ChangedFilesState {
@@ -35,11 +37,17 @@ export function useChangedFiles(): ChangedFilesState {
     },
   });
 
+  const refetchQuery = query.refetch;
+  const refetch = useCallback(() => {
+    void refetchQuery();
+  }, [refetchQuery]);
+
   return {
     // Keep showing the previous list while revalidating so the file
     // tree doesn't blank out on every repository change.
     files: query.data ?? [],
     loading: query.isPending,
     error: query.error,
+    refetch,
   };
 }

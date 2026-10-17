@@ -1,14 +1,6 @@
 /**
- * Webview-side adapters.
- *
- * Mirrors `src/infrastructure/rpc-host.ts`: the protocol, the transport
- * state machine and the client are shared via
- * `../rpc/protocol`, so only the part that genuinely differs
- * lives here — bridging the browser `message` event and
- * `acquireVsCodeApi()` to a `Wire`.
- *
- * No Effect: this bundle is a plain React app and has no use for the
- * effect runtime.
+ * Webview-side wire adapters. The protocol and transport state machine
+ * are shared with the host; only the browser `message` bridge lives here.
  */
 import {
   createRpcClient,
@@ -22,30 +14,6 @@ import {
   type WireFrame,
 } from "../rpc/protocol";
 import type { VsCodeWebviewApi } from "./utils/vscode";
-
-export type {
-  HostApi,
-  RpcCallOptions,
-  RpcClient,
-  RpcContract,
-  RpcHandler,
-  RpcMethod,
-  Transport,
-  WebviewApi,
-  Wire,
-  WireFrame,
-  WireResult,
-  WireSerializedError,
-} from "../rpc/protocol";
-export {
-  AbortError,
-  RemoteError,
-  TimeoutError,
-  createRpcClient,
-  createTransport,
-  parseWireFrame,
-  serializeError,
-} from "../rpc/protocol";
 
 /**
  * Wraps the browser `message` event plus `acquireVsCodeApi()` as a

@@ -1,20 +1,8 @@
 import type { HighlighterCore } from "shiki/core";
 import type { WordSegment } from "./diffWords";
 
-/**
- * Syntax highlighting for diff lines, loaded on demand.
- *
- * Shiki is used through `shiki/core` with the JavaScript regex engine so
- * the grammars and themes are *dynamic* imports — rspack splits them
- * into separate chunks that only load when a diff is actually rendered.
- * Importing the `shiki` entry point instead would pull every language
- * into the initial webview bundle.
- *
- * Highlighting is best-effort and never fatal: if a grammar is missing
- * or the language is unknown, callers fall back to plain text.
- */
-
-/** Maps a file extension to a Shiki language id we actually bundle. */
+// Grammars/themes are dynamic imports so they stay out of the initial
+// bundle. Highlighting is best-effort; callers fall back to plain text.
 const LANGUAGE_BY_EXTENSION: Readonly<Record<string, string>> = {
   ts: "typescript",
   tsx: "typescript",
@@ -37,11 +25,6 @@ const LANGUAGE_BY_EXTENSION: Readonly<Record<string, string>> = {
   sh: "shell",
 };
 
-/**
- * The shape a `@shikijs/langs/*` module resolves to. Declared
- * structurally so we don't add a dependency on `@shikijs/types` just
- * for one type.
- */
 interface LanguageModule {
   readonly default: unknown;
 }
@@ -61,7 +44,6 @@ const LANG_LOADERS: Readonly<Record<string, () => Promise<LanguageModule>>> = {
   shell: () => import("@shikijs/langs/shell"),
 };
 
-/** The one theme we load. See `highlightLine` for why there's only one. */
 const THEME = "dark-plus";
 
 const THEME_LOADERS = {
@@ -77,21 +59,16 @@ export function languageForPath(path: string): string | undefined {
   return LANGUAGE_BY_EXTENSION[name.slice(dot + 1).toLowerCase()];
 }
 
-/** One token: its text and the colour Shiki assigned it. */
 export interface HighlightToken {
   readonly text: string;
   readonly color: string | undefined;
 }
 
-let highlighterPromise: Promise<HighlighterCore> | undefined;
+let highlighterPromise: Promise<HighlighterCore | undefined> | undefined;
+const languageLoads = new Map<string, Promise<void>>();
+const tokenCache = new Map<string, readonly HighlightToken[] | undefined>();
+const TOKEN_CACHE_LIMIT = 2000;
 
-/**
- * Creates (once) and returns the shared highlighter.
- *
- * `shiki/core` itself is imported dynamically so the engine doesn't land
- * in the initial webview chunk — it only loads when a diff is actually
- * rendered, and it resolves to undefined if anything goes wrong.
- */
 async function getHighlighter(language: string): Promise<HighlighterCore | undefined> {
   const loader = LANG_LOADERS[language];
   if (loader === undefined) {
@@ -99,65 +76,84 @@ async function getHighlighter(language: string): Promise<HighlighterCore | undef
   }
 
   highlighterPromise ??= (async () => {
-    const [{ createHighlighterCore }, { createJavaScriptRegexEngine }] = await Promise.all([
-      import("shiki/core"),
-      import("shiki/engine/javascript"),
-    ]);
-    return createHighlighterCore({
-      themes: [THEME_LOADERS[THEME]()],
-      langs: [],
-      engine: createJavaScriptRegexEngine(),
-    });
+    try {
+      const [{ createHighlighterCore }, { createJavaScriptRegexEngine }] = await Promise.all([
+        import("shiki/core"),
+        import("shiki/engine/javascript"),
+      ]);
+      return createHighlighterCore({
+        themes: [THEME_LOADERS[THEME]()],
+        langs: [],
+        engine: createJavaScriptRegexEngine(),
+      });
+    } catch {
+      // Allow a later render to retry the dynamic import.
+      highlighterPromise = undefined;
+      return undefined;
+    }
   })();
 
   const highlighter = await highlighterPromise;
+  if (highlighter === undefined) {
+    return undefined;
+  }
 
-  // The highlighter is the single source of truth for what's loaded;
-  // tracking that separately here would be a second copy to keep in sync.
   if (!highlighter.getLoadedLanguages().includes(language)) {
-    const module = await loader();
-    await highlighter.loadLanguage(module as Parameters<typeof highlighter.loadLanguage>[0]);
+    let load = languageLoads.get(language);
+    if (load === undefined) {
+      load = loader()
+        .then((module) =>
+          highlighter.loadLanguage(module as Parameters<typeof highlighter.loadLanguage>[0]),
+        )
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+      languageLoads.set(language, load);
+    }
+    await load;
   }
   return highlighter;
 }
 
-/**
- * Tokenizes one line of source.
- *
- * Uses `dark-plus`, VS Code's own dark colour scheme, so the pane matches
- * the editor the user is already looking at. There is no light variant
- * yet — no caller asks for one, and loading a second theme would pull it
- * into the bundle for nothing.
- */
+// `dark-plus` matches VS Code's default dark theme; no light variant yet.
 export async function highlightLine(
   text: string,
   language: string,
 ): Promise<readonly HighlightToken[] | undefined> {
+  const key = `${language}\0${text}`;
+  if (tokenCache.has(key)) {
+    return tokenCache.get(key);
+  }
+
   const highlighter = await getHighlighter(language);
-  if (highlighter === undefined) {
-    return undefined;
+  let result: readonly HighlightToken[] | undefined;
+  if (highlighter !== undefined) {
+    try {
+      const { tokens } = highlighter.codeToTokens(text, { lang: language, theme: THEME });
+      result = tokens[0]?.map((token) => ({ text: token.content, color: token.color }));
+    } catch {
+      result = undefined;
+    }
   }
-  try {
-    const { tokens } = highlighter.codeToTokens(text, { lang: language, theme: THEME });
-    return tokens[0]?.map((token) => ({ text: token.content, color: token.color }));
-  } catch {
-    return undefined;
+
+  if (tokenCache.size >= TOKEN_CACHE_LIMIT) {
+    const oldest = tokenCache.keys().next().value;
+    if (oldest !== undefined) {
+      tokenCache.delete(oldest);
+    }
   }
+  tokenCache.set(key, result);
+  return result;
 }
 
-/**
- * Overlays word-diff segments onto highlighted tokens.
- *
- * Shiki gives us colours; the word diff tells us which parts changed.
- * We split tokens at segment boundaries so a changed word keeps its
- * syntax colour while still getting the change background.
- */
 export interface RenderPiece {
   readonly text: string;
   readonly color: string | undefined;
   readonly changed: boolean;
 }
 
+// Splits tokens at word-diff boundaries so changed words keep their colour.
 export function mergeSegments(
   tokens: readonly HighlightToken[],
   segments: readonly WordSegment[] | undefined,
