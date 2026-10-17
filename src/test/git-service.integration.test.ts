@@ -178,6 +178,44 @@ suite("Host git service (real git)", () => {
     assert.strictEqual(repo.git(["status", "--porcelain"]), "");
   });
 
+  test("a deletion that is already staged does not break the index sync", async () => {
+    const repo = makeRepo("patchwork-deleted-staged-");
+    writeFileSync(join(repo.root, "gone.txt"), "gone\n");
+    repo.git(["add", "gone.txt"]);
+    repo.git(["commit", "-q", "-m", "initial"]);
+
+    // The user staged the deletion, so the path is now absent from both
+    // HEAD and the index. `git restore --source=<new>` treats that as an
+    // unknown pathspec; the sync must remove it another way.
+    rmSync(join(repo.root, "gone.txt"));
+    repo.git(["add", "-u", "gone.txt"]);
+
+    // An unrelated staged change must survive the sync untouched.
+    writeFileSync(join(repo.root, "keep.txt"), "keep\n");
+    repo.git(["add", "keep.txt"]);
+
+    const changeSet = await readChangeSet(repo.root, ["gone.txt"]);
+    const file = changeSet.files[0];
+    assert.ok(file !== undefined);
+    assert.strictEqual(file.newPath, "/dev/null");
+
+    await run(
+      Effect.gen(function* () {
+        const git = yield* GitService;
+        return yield* git.createCommits(repo.root, [
+          {
+            message: "chore: remove gone file",
+            patches: [{ path: "gone.txt", patch: buildPatch(file, file.hunks) }],
+          },
+        ]);
+      }),
+    );
+
+    const files = repo.git(["ls-files"]).trim();
+    assert.ok(!files.split("\n").includes("gone.txt"));
+    assert.deepStrictEqual(repo.git(["status", "--porcelain"]).trim().split("\n"), ["A  keep.txt"]);
+  });
+
   test("a failed apply leaves HEAD, the index, and the worktree untouched", async () => {
     const repo = makeTwoHunkRepo();
     const before = snapshot(repo);

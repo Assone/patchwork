@@ -8,6 +8,7 @@ export type GitOperation =
   | "diff"
   | "status"
   | "ls-files"
+  | "ls-tree"
   | "rev-parse"
   | "read-tree"
   | "apply"
@@ -15,6 +16,7 @@ export type GitOperation =
   | "commit-tree"
   | "commit"
   | "update-ref"
+  | "update-index"
   | "restore";
 
 export class GitServiceError extends Data.TaggedError("GitServiceError")<{

@@ -137,6 +137,68 @@ const runGit = (
       }),
   });
 
+/**
+ * Point the real index at `commit` for `paths`, preserving unrelated
+ * staged changes.
+ *
+ * `git restore --source=<commit>` rejects a path that exists in neither
+ * `<commit>` nor the index as an unknown pathspec, and one such path
+ * aborts the whole command. That is exactly the state of a file the user
+ * had already staged as deleted: the commit removes it, so it is absent
+ * from both. Remove those paths with `git update-index --force-remove`
+ * and restore only the survivors.
+ */
+const syncIndexToCommit = (
+  gitPath: string,
+  repositoryRoot: string,
+  commit: string,
+  paths: readonly string[],
+): Effect.Effect<void, GitServiceError> =>
+  Effect.gen(function* () {
+    if (paths.length === 0) {
+      return;
+    }
+
+    const listed = yield* runGit(gitPath, "ls-tree", repositoryRoot, [
+      "--literal-pathspecs",
+      "--no-pager",
+      "ls-tree",
+      "-r",
+      "-z",
+      "--name-only",
+      commit,
+      "--",
+      ...paths,
+    ]);
+    const present = listed.split("\0").filter((path) => path.length > 0);
+    const presentSet = new Set(present);
+    const absent = paths.filter((path) => !presentSet.has(path));
+
+    if (absent.length > 0) {
+      // `--force-remove` is unconditional and a no-op when the path is
+      // already absent, which is the common case for a staged deletion.
+      yield* runGit(gitPath, "update-index", repositoryRoot, [
+        "--no-pager",
+        "update-index",
+        "--force-remove",
+        "--",
+        ...absent,
+      ]);
+    }
+
+    if (present.length > 0) {
+      yield* runGit(gitPath, "restore", repositoryRoot, [
+        "--literal-pathspecs",
+        "--no-pager",
+        "restore",
+        "--staged",
+        `--source=${commit}`,
+        "--",
+        ...present,
+      ]);
+    }
+  });
+
 const isConflict = (x: string, y: string): boolean =>
   x === "U" || y === "U" || (x === "A" && y === "A") || (x === "D" && y === "D");
 
@@ -597,19 +659,11 @@ const createCommitsSequential = (
         ...new Set(commits.flatMap((commit) => commit.patches.map((p) => p.path))),
       ];
       if (touchedPaths.length > 0) {
-        yield* runGit(gitPath, "restore", repositoryRoot, [
-          "--literal-pathspecs",
-          "--no-pager",
-          "restore",
-          "--staged",
-          `--source=${hashes.at(-1)}`,
-          "--",
-          ...touchedPaths,
-        ]).pipe(
+        yield* syncIndexToCommit(gitPath, repositoryRoot, hashes.at(-1)!, touchedPaths).pipe(
           Effect.mapError(
             (cause) =>
               new CommitWriteError({
-                message: `Commits were created but the index could not be synced: ${cause.message}. Run \`git reset\` to resync.`,
+                message: `Commits were created but the index could not be synced: ${cause.message}. Resync the selected paths with \`git reset -- <paths>\`; a plain \`git reset\` also unstages unrelated changes.`,
                 reason: "index-sync-failed",
                 step: "index-sync",
                 cwd: repositoryRoot,
@@ -764,19 +818,11 @@ const createCommitsUncached = (
         ...new Set(commits.flatMap((commit) => commit.patches.map((p) => p.path))),
       ];
       if (touchedPaths.length > 0) {
-        yield* runGit(gitPath, "restore", repositoryRoot, [
-          "--literal-pathspecs",
-          "--no-pager",
-          "restore",
-          "--staged",
-          `--source=${hashes.at(-1)}`,
-          "--",
-          ...touchedPaths,
-        ]).pipe(
+        yield* syncIndexToCommit(gitPath, repositoryRoot, hashes.at(-1)!, touchedPaths).pipe(
           Effect.mapError(
             (cause) =>
               new CommitWriteError({
-                message: `Commits were created but the index could not be synced: ${cause.message}. Run \`git reset\` to resync.`,
+                message: `Commits were created but the index could not be synced: ${cause.message}. Resync the selected paths with \`git reset -- <paths>\`; a plain \`git reset\` also unstages unrelated changes.`,
                 reason: "index-sync-failed",
                 step: "index-sync",
                 cwd: repositoryRoot,
