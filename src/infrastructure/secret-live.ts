@@ -35,4 +35,15 @@ export const SecretServiceLive = (context: vscode.ExtensionContext) =>
             cause,
           }),
       }),
+
+    deleteApiKey: (provider) =>
+      Effect.tryPromise({
+        try: () => context.secrets.delete(secretKey(provider)),
+        catch: (cause) =>
+          new SecretStorageError({
+            operation: "delete",
+            provider,
+            cause,
+          }),
+      }),
   });
