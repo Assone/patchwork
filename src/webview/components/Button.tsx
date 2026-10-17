@@ -37,6 +37,18 @@ const VARIANT: Record<NonNullable<ButtonProps["variant"]>, string> = {
   ),
 };
 
+export const buttonClassName = (
+  variant: NonNullable<ButtonProps["variant"]> = "primary",
+  className?: string,
+): string =>
+  cn(
+    "inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-xs font-medium",
+    "disabled:cursor-not-allowed",
+    "focus-visible:outline-focus-border outline-none focus-visible:outline",
+    VARIANT[variant],
+    className,
+  );
+
 export const Button: React.FC<ButtonProps> = ({
   variant = "primary",
   className,
@@ -44,18 +56,5 @@ export const Button: React.FC<ButtonProps> = ({
   ref,
   ...rest
 }) => {
-  return (
-    <button
-      ref={ref}
-      type={type}
-      className={cn(
-        "rounded-sm px-3 py-1.5 text-xs font-medium",
-        "disabled:cursor-not-allowed",
-        "focus-visible:outline-focus-border outline-none focus-visible:outline",
-        VARIANT[variant],
-        className,
-      )}
-      {...rest}
-    />
-  );
+  return <button ref={ref} type={type} className={buttonClassName(variant, className)} {...rest} />;
 };
