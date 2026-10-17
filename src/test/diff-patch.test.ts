@@ -50,6 +50,53 @@ describe("diff patch assembly", () => {
     assert.ok(patch.startsWith("diff --git a/a.txt b/a.txt\n"));
   });
 
+  test("keeps the blank line that terminates a GIT binary patch", () => {
+    const raw = [
+      "diff --git a/icon.png b/icon.png",
+      "new file mode 100644",
+      "index 0000000..1111111",
+      "GIT binary patch",
+      "literal 1",
+      "Lc000000",
+      "literal 0",
+      "HcmV?d00001",
+      "",
+    ].join("\n");
+
+    const [file] = parser(`${raw}\n`);
+    assert.ok(file !== undefined);
+    assert.strictEqual(file.isBinary, true);
+    assert.ok(file.raw.endsWith("\n\n"), "binary patch needs its blank terminator");
+    assert.strictEqual(buildPatch(file, file.hunks), file.raw);
+  });
+
+  test("keeps the binary terminator when another file follows", () => {
+    const raw = [
+      "diff --git a/icon.png b/icon.png",
+      "new file mode 100644",
+      "index 0000000..1111111",
+      "GIT binary patch",
+      "literal 1",
+      "Lc000000",
+      "literal 0",
+      "HcmV?d00001",
+      "",
+      "diff --git a/a.txt b/a.txt",
+      "index 1111111..2222222 100644",
+      "--- a/a.txt",
+      "+++ b/a.txt",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      "",
+    ].join("\n");
+
+    const files = parser(raw);
+    assert.strictEqual(files.length, 2);
+    assert.ok(files[0]?.raw.endsWith("\n\n"));
+    assert.ok(!files[0]?.raw.includes("diff --git a/a.txt"));
+  });
+
   test("preserves CRLF and no-newline markers in raw patches", () => {
     const crlf = [
       "diff --git a/a.txt b/a.txt",

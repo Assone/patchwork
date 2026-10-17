@@ -216,6 +216,38 @@ suite("Host git service (real git)", () => {
     assert.deepStrictEqual(repo.git(["status", "--porcelain"]).trim().split("\n"), ["A  keep.txt"]);
   });
 
+  test("a binary file is committed through a GIT binary patch", async () => {
+    const repo = makeRepo("patchwork-binary-");
+    writeFileSync(join(repo.root, "seed.txt"), "seed\n");
+    repo.git(["add", "seed.txt"]);
+    repo.git(["commit", "-q", "-m", "initial"]);
+
+    writeFileSync(join(repo.root, "icon.bin"), Buffer.from([0x00, 0x01, 0xff, 0x00, 0x42]));
+
+    const changeSet = await readChangeSet(repo.root, ["icon.bin"]);
+    const file = changeSet.files[0];
+    assert.ok(file !== undefined);
+    assert.strictEqual(file.isBinary, true);
+
+    await run(
+      Effect.gen(function* () {
+        const git = yield* GitService;
+        return yield* git.createCommits(repo.root, [
+          {
+            message: "feat: add icon",
+            patches: [{ path: "icon.bin", patch: buildPatch(file, file.hunks) }],
+          },
+        ]);
+      }),
+    );
+
+    assert.strictEqual(
+      repo.git(["rev-parse", "HEAD:icon.bin"]).trim(),
+      repo.git(["hash-object", "icon.bin"]).trim(),
+    );
+    assert.strictEqual(repo.git(["status", "--porcelain"]), "");
+  });
+
   test("a failed apply leaves HEAD, the index, and the worktree untouched", async () => {
     const repo = makeTwoHunkRepo();
     const before = snapshot(repo);

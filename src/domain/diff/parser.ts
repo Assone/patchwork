@@ -334,6 +334,15 @@ export const parser = (input: string): FileDiff[] => {
 
     currentFile.header = rawSlice(fileStartIndex, firstHunkIndex ?? endIndex);
     currentFile.raw = rawSlice(fileStartIndex, endIndex);
+
+    // Git terminates a `GIT binary patch` section with a blank line.
+    // `rawSlice` normalizes trailing newlines for text patches and drops
+    // that terminator; without it `git apply` reports "corrupt binary
+    // patch" at the last line and rejects the whole input.
+    if (currentFile.isBinary) {
+      currentFile.raw = `${currentFile.raw.replace(/\n+$/, "")}\n\n`;
+    }
+
     currentFile.type = getFileType(currentFile);
     files.push(currentFile);
     currentFile = undefined;
