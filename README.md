@@ -9,6 +9,31 @@ by default (`type(scope): subject`, imperative lowercase subject, optional
 body/footer). A custom prompt can request a different format or language, and you can
 review and edit every message before anything is written to git.
 
+## Features
+
+- **Hunk-level splitting** — recombines the changed hunks themselves, so one file can
+  land in several commits.
+- **Review before writing** — every message and unit assignment is editable; nothing is
+  committed until you press **Commit**.
+- **Bring your own model** — OpenAI, Anthropic, or any OpenAI-compatible endpoint such
+  as Ollama, vLLM, DeepSeek, OpenRouter, or LM Studio.
+- **Safe by default** — commits are written through a temporary index and a
+  compare-and-swap ref update; a failure leaves HEAD where it was.
+- **Live progress** — streamed responses, elapsed time, and a Cancel button that stops
+  the request in the extension host.
+
+## Quick start
+
+1. Open a git repository in VS Code.
+2. Click the Patchwork icon in the Source Control title bar, or run
+   **Patchwork: Open Commit Composer** from the Command Palette.
+3. Select the files to include, optionally describe the intent, and choose
+   **Generate Commits**.
+4. Review the proposed commits, edit any message, and choose **Commit**.
+
+If no model is configured yet, choose **Configure Model** and fill in the settings
+panel. The API key is stored in VS Code's encrypted secret storage.
+
 ## How it works
 
 When the composer opens, files that already have staged changes (including partially
