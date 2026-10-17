@@ -4,10 +4,9 @@ import * as vscode from "vscode";
 
 export const LoggerServiceLive = (channel: vscode.LogOutputChannel) =>
   Layer.succeed(LoggerService, {
-    trace: (message) => channel.trace(message),
-    debug: (message) => channel.debug(message),
-    info: (message) => channel.info(message),
-    warn: (message) => channel.warn(message),
-    error: (message) => channel.error(message),
+    debug: (message, ...args) => channel.debug(message, ...args),
+    info: (message, ...args) => channel.info(message, ...args),
+    warn: (message, ...args) => channel.warn(message, ...args),
+    error: (message, ...args) => channel.error(message, ...args),
     dispose: () => channel.dispose(),
   });

@@ -1,11 +1,10 @@
 import { Context } from "effect";
 
 export interface LoggerServiceApi {
-  readonly trace: (message: string) => void;
-  readonly debug: (message: string) => void;
-  readonly info: (message: string) => void;
-  readonly warn: (message: string) => void;
-  readonly error: (message: string) => void;
+  readonly debug: (message: string, ...args: any[]) => void;
+  readonly info: (message: string, ...args: any[]) => void;
+  readonly warn: (message: string, ...args: any[]) => void;
+  readonly error: (message: string, ...args: any[]) => void;
   readonly dispose: () => void;
 }
 
