@@ -27,7 +27,10 @@
     "src/webview",
     "src/rpc/protocol.ts",
     "src/rpc/git-types.ts",
-    "src/utils/diff.ts",
+    "src/rpc/commit-types.ts",
+    "src/rpc/config-types.ts",
+    "src/rpc/contract.ts",
+    "src/domain",
     "src/env.d.ts"
   ]
 }

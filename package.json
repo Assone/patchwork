@@ -1,10 +1,16 @@
 {
   "name": "patchwork",
-  "displayName": "patchwork",
+  "displayName": "Patchwork",
   "version": "0.0.1",
-  "description": "",
+  "description": "Split a large change into meaningful commits by recombining hunks with LLM-written messages.",
   "categories": [
     "Other"
+  ],
+  "keywords": [
+    "commit",
+    "git",
+    "hunks",
+    "llm"
   ],
   "main": "./dist/extension.js",
   "scripts": {
@@ -12,14 +18,19 @@
     "compile": "rspack",
     "watch": "rspack --watch",
     "package": "rspack --mode production --devtool hidden-source-map",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "package:vsix": "pnpm dlx @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license --no-rewrite-relative-links",
+    "compile-tests": "tsc -b tsconfig.test.json",
+    "watch-tests": "tsc -b tsconfig.test.json --watch",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.unit.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "pretest": "pnpm run typecheck && pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "test": "vscode-test"
+    "test": "pnpm run test:unit && pnpm run test:integration",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:integration": "vscode-test"
   },
   "dependencies": {
     "@shikijs/langs": "^4.5.0",
@@ -57,7 +68,8 @@
     "oxlint": "^1.87.0",
     "oxlint-tsgolint": "^7.0.2004",
     "rspack-merge": "^1.0.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "diff": "^8.0.4",

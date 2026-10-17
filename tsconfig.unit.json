@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "types": ["node", "vitest/globals"],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": [
+    "src/test/**/*.test.ts",
+    "src/test/helpers",
+    "src/rpc",
+    "src/services",
+    "src/features",
+    "src/domain",
+    "src/webview/utils"
+  ],
+  "exclude": ["src/test/**/*.integration.test.ts", "node_modules", "dist", "out"]
+}

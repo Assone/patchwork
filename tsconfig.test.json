@@ -11,17 +11,22 @@
     "rewriteRelativeImportExtensions": false,
     "allowImportingTsExtensions": false,
     "moduleDetection": "auto",
-    "types": ["node", "mocha"]
+    "types": ["node", "mocha"],
+    // `src/webview/utils` is compiled here (diffRows etc. are tested
+    // directly), and its `vscode.ts` ambient declarations reference
+    // `Transferable` from the DOM lib.
+    "lib": ["ES2022", "DOM"]
   },
   "include": [
-    "src/test/**/*.ts",
-    "src/rpc/protocol.ts",
-    "src/rpc/git-types.ts",
-    "src/diff.ts",
-    "src/services/git.ts",
-    "src/infrastructure/git-live.ts",
-    "src/webview/utils/diffRows.ts",
-    "src/webview/utils/diffWords.ts"
+    // Vitest compiles and runs unit tests directly. This project only
+    // emits the tests that need the VS Code extension host.
+    "src/test/**/*.integration.test.ts",
+    "src/test/helpers",
+    "src/rpc",
+    "src/services",
+    "src/infrastructure",
+    "src/features",
+    "src/domain"
   ],
   "exclude": ["node_modules", "dist", "out"]
 }
