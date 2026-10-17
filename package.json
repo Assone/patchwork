@@ -1,16 +1,23 @@
 {
   "name": "patchwork",
-  "displayName": "Patchwork",
+  "displayName": "Patchwork — AI Commit Composer",
   "version": "0.0.1",
-  "description": "Split a large change into meaningful commits by recombining hunks with LLM-written messages.",
+  "description": "Split one large change into small, meaningful commits. Patchwork groups changed hunks with an LLM, writes commit messages, and lets you review every commit before it touches git.",
   "categories": [
-    "Other"
+    "AI",
+    "SCM Providers"
   ],
   "keywords": [
+    "ai",
+    "anthropic",
+    "code-review",
     "commit",
+    "commit-message",
     "git",
     "hunks",
-    "llm"
+    "llm",
+    "openai",
+    "staging"
   ],
   "main": "./dist/extension.js",
   "scripts": {
@@ -83,6 +90,7 @@
       {
         "command": "patchwork.openCommitComposer",
         "title": "Open Commit Composer",
+        "category": "Patchwork",
         "icon": "$(git-commit)"
       }
     ],
@@ -150,7 +158,19 @@
     ]
   },
   "activationEvents": [],
+  "icon": "assets/icon.png",
+  "galleryBanner": {
+    "color": "#141824",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.140.0"
+  },
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Patchwork reads repository state and writes commits, so it requires a trusted workspace."
+    }
   }
 }
