@@ -1,17 +1,21 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [],
+  "plugins": ["react", "typescript"],
   "categories": {
-    "correctness": "off"
+    "correctness": "error"
   },
   "env": {
     "builtin": true,
     "es2022": true
   },
+  "ignorePatterns": ["src/types/**", "src/webview/routeTree.gen.ts"],
   "rules": {
     "curly": "warn",
     "eqeqeq": "warn",
-    "no-throw-literal": "warn"
+    "no-throw-literal": "warn",
+    "react/set-state-in-effect": "warn",
+    "react-hooks/exhaustive-deps": "warn",
+    "typescript/no-this-alias": "warn"
   },
   "options": {
     "typeAware": true,
