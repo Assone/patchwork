@@ -83,6 +83,10 @@ with a message naming the token counts.
 `patchwork.llm.idleTimeoutSeconds` controls how long the host waits for the next
 chunk before giving up (default 120).
 
+`patchwork.llm.maxPromptChars` caps how much diff text (characters) goes into one
+request, default 120,000. Unit bodies are never truncated: a selection that exceeds
+the cap is rejected with its size, the unit and file counts, and the way out.
+
 The settings panel (`Patchwork · Settings`) writes these and stores the API key in
 VS Code's encrypted secret storage.
 

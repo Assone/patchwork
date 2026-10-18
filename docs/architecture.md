@@ -59,6 +59,46 @@ review editor) can override it. The host re-derives units at commit time and rej
 a plan whose IDs no longer exist (a stale worktree). An invalid model plan gets one
 automatic retry with the validation feedback rewritten in the aliases the model saw.
 
+## Diagnostics
+
+Every generation logs one line with the unit count, file count, lock unit count, and
+request size (`features/compose/prompt.ts`, `describePrompt`). When a plan is
+rejected, `features/compose/diagnose.ts` reports how far the reply got:
+`placed N/M`, `first missing`, `unknown` and `duplicated` ids, `forbidden` lock ids,
+and empty-commit count. The bare `hunks not assigned to a commit` message cannot
+distinguish a reply cut short by the provider from one with mangled ids, and the two
+need different fixes.
+
+The token figure is an estimate (characters ÷ 3) for sizing only; the provider's own
+tokenizer is authoritative.
+
+### Log levels
+
+The output channel is `log: true`, so these levels are what the user can filter in
+the log level picker. Pick by _who needs to act_, not by how alarming the data looks:
+
+| Level   | Use for                                                                | Example                                                |
+| ------- | ---------------------------------------------------------------------- | ------------------------------------------------------ |
+| `error` | A request failed and the user must do something.                       | Model replied with prose, not JSON; request too large. |
+| `warn`  | Something was recovered from or retried; the run continues.            | Plan rejected, retrying with feedback; falling back.   |
+| `info`  | One line per user-visible action, with the numbers needed to debug it. | `composing via text (…): 74 unit(s) in 43 file(s)`.    |
+| `debug` | Raw payloads — request or reply bodies — for post-mortems.             | `raw reply (attempt 1): {"commits":…}`.                |
+
+Rules that keep the channel readable:
+
+- **A failure is logged once.** An `Effect.fail` already reaches the RPC layer,
+  which logs `RPC handler "…" failed: …`. Do not also log it at the throw site; the
+  same failure then reads as several errors.
+- **One line per event.** Never emit two lines with the same prefix; a second line
+  that adds detail is `info`/`debug` with its own prefix, not a copy of the first.
+- **Diagnostics are data, not errors.** Counts like `placed 66/74` belong at `info`
+  even when the plan around them was rejected.
+- **Raw model output is `debug`.** It is the first thing needed for a post-mortem,
+  but it is not something a normal run should print.
+- Keep the string a user sees for a model-facing value distinct from the string sent
+  back to the model (`retryFeedback`), so the log is not the only record of one of
+  them.
+
 ## Generation transport
 
 `infrastructure/llm-live.ts` always requests a stream. With a schema it passes

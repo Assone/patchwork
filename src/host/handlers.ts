@@ -1,5 +1,6 @@
 import { type ManagedRuntime, Effect } from "effect";
 import * as vscode from "vscode";
+import { DEFAULT_MAX_DIFF_CHARS } from "../features/compose/prompt";
 import { commitPlan, generateCommits, type ComposeProgress } from "../features/llm-compose";
 import { registerEffectHandler } from "../rpc/host";
 import type { HostApi, RpcClient, WebviewApi } from "../rpc/protocol";
@@ -85,10 +86,16 @@ export const registerClientHandler = (
       generations.set(requestId, controller);
       const publishProgress = createProgressPublisher(notifier, requestId);
 
+      // Read per call so a settings edit applies without reloading.
+      const maxPromptChars = vscode.workspace
+        .getConfiguration("patchwork.llm")
+        .get<number>("maxPromptChars", DEFAULT_MAX_DIFF_CHARS);
+
       return yield* generateCommits({
         repositoryRoot,
         files: paths.map((path) => ({ path })),
         prompt,
+        maxPromptChars,
         abortSignal: controller.signal,
         onProgress: publishProgress,
       }).pipe(

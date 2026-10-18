@@ -13,8 +13,9 @@ import {
   type LLMServiceApi,
 } from "../../services/llm";
 import { LoggerService, type LoggerServiceApi } from "../../services/log";
+import { describeDiagnosis, diagnoseProposal } from "./diagnose";
 import { buildPlan } from "./plan";
-import { buildMessages, jsonInstruction } from "./prompt";
+import { buildMessages, describePrompt, jsonInstruction, PromptTooLargeError } from "./prompt";
 import { describeShape, extractProposal, preview } from "./proposal";
 import { CommitPlanSchema } from "./schema";
 import { buildUnits, type ComposeUnit } from "./units";
@@ -28,6 +29,11 @@ export interface GenerateCommitsInput {
   readonly abortSignal?: AbortSignal;
   /** Called as model output arrives. Throttling is the host's job. */
   readonly onProgress?: (progress: ComposeProgress) => void;
+  /**
+   * Hard cap on the diff text sent. Supplied by the host (which owns the
+   * settings) so this module stays free of the `vscode` API.
+   */
+  readonly maxPromptChars?: number;
 }
 
 /** Which of the two attempts is currently streaming. */
@@ -35,6 +41,13 @@ export interface ComposeProgress {
   readonly phase: "structured" | "text";
   readonly receivedChars: number;
 }
+
+/**
+ * Keep a raw payload readable *and* intact: `preview` collapses whitespace,
+ * which is fine for prose but destroys the JSON this line exists to record.
+ */
+const clip = (text: string, max: number): string =>
+  text.length <= max ? text : `${text.slice(0, max)}…(${text.length} chars)`;
 
 const fail = (message: string, cause?: unknown): LLMGenerateError =>
   new LLMGenerateError({ reason: "unknown", message, ...(cause === undefined ? {} : { cause }) });
@@ -90,7 +103,20 @@ export const generateCommits = (
       return yield* Effect.fail(fail("The selected files have no changes to commit."));
     }
 
-    const messages = buildMessages(input.prompt, built.units);
+    let messages: ReadonlyArray<LLMMessage>;
+    try {
+      messages = buildMessages(input.prompt, built.units, {
+        ...(input.maxPromptChars === undefined ? {} : { maxDiffChars: input.maxPromptChars }),
+      });
+    } catch (cause) {
+      if (cause instanceof PromptTooLargeError) {
+        // Report once, through the error itself: the RPC layer logs it on
+        // the way out, so logging here as well would double every failure.
+        return yield* Effect.fail(fail(cause.message, cause));
+      }
+      throw cause;
+    }
+
     const plan = yield* draftPlan({
       llm,
       log,
@@ -137,6 +163,13 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
     const key = endpointKey(spec);
     let validationMessage = "";
 
+    const mode =
+      textOnlyEndpoints.has(key) || !llm.streamsStructuredOutput(spec) ? "text" : "structured";
+    // One line per request: the shape of what was sent is the first thing to
+    // check when a plan comes back partly unassigned, and two overlapping
+    // summaries made it hard to tell how many requests even ran.
+    log.info(`composing via ${mode} (${key}): ${describePrompt(messages, units)}`);
+
     const progress =
       onProgress === undefined
         ? undefined
@@ -182,7 +215,13 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
             return result.plan;
           }
           validationMessage = toModelIds(result.validation.message, units);
-          log.warn(`structured plan invalid: ${validationMessage}`);
+          log.warn(`structured plan rejected, falling back to text: ${validationMessage}`);
+          log.info(
+            `plan diagnostics: ${describeDiagnosis(
+              diagnoseProposal({ proposal, units, replyChars: structured.value.text.length }),
+            )}`,
+          );
+          log.debug(`raw structured reply: ${clip(structured.value.text, 4000)}`);
         } else {
           validationMessage = `the reply did not match the expected shape (${describeShape(structured.value.value)})`;
           textOnlyEndpoints.add(key);
@@ -275,8 +314,15 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
         return result.plan;
       }
 
-      feedback = toModelIds(result.validation.message, units);
-      log.error(`model plan was invalid (attempt ${attempt}): ${feedback}`);
+      const retryFeedback = toModelIds(result.validation.message, units);
+      log.warn(`model plan rejected (attempt ${attempt}/${MAX_TEXT_ATTEMPTS}): ${retryFeedback}`);
+      log.info(
+        `plan diagnostics (attempt ${attempt}): ${describeDiagnosis(
+          diagnoseProposal({ proposal, units, replyChars: text.text.length }),
+        )}`,
+      );
+      log.debug(`raw reply (attempt ${attempt}): ${clip(text.text, 4000)}`);
+      feedback = retryFeedback;
       noteRetry(attempt);
     }
 

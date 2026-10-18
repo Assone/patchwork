@@ -5,6 +5,34 @@ All notable changes to the Patchwork extension are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-10-18
+
+### Fixed
+
+- A large selection no longer produces a prompt with units whose diffs are empty. The
+  prompt budget handed the whole remaining allowance to the first oversized unit and
+  then zero to every unit after it, so the tail of a big change set arrived as an empty
+  diff block and the plan came back with those units unassigned. Unit bodies are no
+  longer truncated at all: a selection over `patchwork.llm.maxPromptChars` is rejected
+  with the size and what to do about it.
+- A rejected plan is logged once, under its own heading, instead of the same sentence
+  twice at `error`. A failure that propagates to the RPC layer is no longer logged
+  again at the throw site, so one failure no longer reads as three.
+- The model's raw reply is recorded without collapsing its whitespace, so it can still
+  be parsed when a reply has to be examined after the fact.
+
+### Added
+
+- `patchwork.llm.maxPromptChars` (default 120,000 characters) caps the diff sent in one
+  request.
+- Generation logs what it sent — unit count, file count, size, and whether structured
+  or text mode was used — and, when a plan is rejected, how far the model got: units
+  placed out of the expected total, ids it invented or repeated, and whether it
+  referenced a lock file. The unassigned-unit error alone could not distinguish a reply
+  cut short from one with mangled ids, which need different fixes.
+- `docs/architecture.md` records the output channel's level convention, so `error`,
+  `warn`, `info`, and `debug` mean the same thing at every call site.
+
 ## [0.1.1] - 2026-10-18
 
 ### Fixed

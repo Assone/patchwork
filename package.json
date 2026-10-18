@@ -1,7 +1,7 @@
 {
   "name": "patchwork-commit-composer",
   "displayName": "Patchwork — AI Commit Composer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Split one large change into small, meaningful commits. Patchwork groups changed hunks with an LLM, writes commit messages, and lets you review every commit before it touches git.",
   "categories": [
     "AI",
@@ -150,6 +150,12 @@
             ],
             "default": "chat-completions",
             "markdownDescription": "Wire format for `openai-compatible` endpoints. `chat-completions` is the common case; switch to `responses` for Azure OpenAI."
+          },
+          "patchwork.llm.maxPromptChars": {
+            "type": "number",
+            "default": 120000,
+            "minimum": 10000,
+            "markdownDescription": "Largest amount of diff text (in characters, roughly 4 per token) sent in one request. A selection that exceeds it is rejected with a clear error instead of being silently truncated, because a truncated prompt asks the model to place units it cannot see. Raise this only for a model whose context window comfortably fits the diff."
           },
           "patchwork.llm.idleTimeoutSeconds": {
             "type": "number",

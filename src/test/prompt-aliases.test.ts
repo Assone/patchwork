@@ -2,7 +2,12 @@ import * as assert from "assert";
 import { describe, test } from "vitest";
 import { parser } from "../domain/diff";
 import { toModelIds, translateProposal, unitAliases } from "../features/compose/aliases";
-import { buildMessages, jsonInstruction } from "../features/compose/prompt";
+import {
+  buildMessages,
+  describePrompt,
+  jsonInstruction,
+  PromptTooLargeError,
+} from "../features/compose/prompt";
 import { buildUnits } from "../features/compose/units";
 import type { ChangedFile } from "../rpc/git-types";
 import type { ChangeSet } from "../services/git";
@@ -88,5 +93,56 @@ describe("model-facing unit aliases", () => {
   test("the JSON instruction does not claim a previous reply exists on the first attempt", () => {
     assert.doesNotMatch(jsonInstruction(""), /previous reply/);
     assert.match(jsonInstruction("hunks not assigned: u1"), /previous reply was invalid/);
+  });
+
+  /** A change set whose diff genuinely exceeded the old 128 KiB budget. */
+  const oversized = () => {
+    const paths = Array.from({ length: 8 }, (_, index) => `big${index}.txt`);
+    // Give each unit a body far larger than the old 32 KiB per-unit cap,
+    // so the old allocator spent the budget on the first units and handed
+    // 0 to the rest.
+    return buildUnits(changeSet(paths)).units.map((unit, index) => ({
+      ...unit,
+      text: `${unit.text}\n${"x".repeat(48 * 1024)}u${index}`,
+    }));
+  };
+
+  test("the fixture really would have overflowed the old two-tier budget", () => {
+    const units = oversized();
+    const total = units.reduce((sum, unit) => sum + unit.text.length, 0);
+    assert.ok(total > 128 * 1024, `${total} should exceed the old total cap`);
+  });
+
+  test("a unit is never emitted with an empty body", () => {
+    // The old budget handed out what was left to the first oversized unit
+    // and then 0 to every unit after it, producing an empty ```diff block.
+    // A model cannot place what it cannot read, and the plan came back
+    // with the tail unassigned.
+    const units = oversized();
+    const prompt = buildMessages("", units, { maxDiffChars: 10_000_000 })[1]?.content ?? "";
+
+    assert.doesNotMatch(prompt, /```diff\n\n```/);
+    assert.doesNotMatch(prompt, /truncated/);
+    const headings = prompt.match(/^### /gm) ?? [];
+    assert.strictEqual(headings.length, units.length, "every unit keeps its heading");
+  });
+
+  test("an oversized selection fails loudly instead of being truncated", () => {
+    assert.throws(
+      () => buildMessages("", oversized()),
+      (error: unknown) => {
+        assert.ok(error instanceof PromptTooLargeError);
+        assert.match(error.message, /too large/);
+        assert.match(error.message, /Select fewer files/);
+        return true;
+      },
+    );
+  });
+
+  test("the prompt report names the unit, file, and token counts", () => {
+    const report = describePrompt(buildMessages("", units), units);
+    assert.match(report, /unit\(s\)/);
+    assert.match(report, /file\(s\)/);
+    assert.match(report, /token/);
   });
 });
