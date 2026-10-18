@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-18
+
+### Added
+
+- `vscode-lm` provider: use a model that VS Code already hosts (GitHub Copilot Chat,
+  or any provider added with **Chat: Manage Models**) without configuring an API key.
+  The model picker lists what VS Code exposes, and a selection that exceeds the
+  model's input window is rejected with a token-count message before the request.
+
 ## [0.0.1] - 2026-10-18
 
 ### Added

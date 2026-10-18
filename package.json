@@ -1,7 +1,7 @@
 {
   "name": "patchwork-commit-composer",
   "displayName": "Patchwork — AI Commit Composer",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Split one large change into small, meaningful commits. Patchwork groups changed hunks with an LLM, writes commit messages, and lets you review every commit before it touches git.",
   "categories": [
     "AI",
@@ -37,6 +37,9 @@
     "watch": "rspack --watch",
     "package": "rspack --mode production --devtool hidden-source-map",
     "package:vsix": "pnpm dlx @vscode/vsce package --no-dependencies",
+    "publish:vsix": "pnpm dlx @vscode/vsce publish --no-dependencies",
+    "publish:pre-release": "pnpm dlx @vscode/vsce publish --no-dependencies --pre-release",
+    "release": "pnpm run fmt:check && pnpm run lint && pnpm run typecheck && pnpm run test:unit && pnpm run publish:vsix",
     "compile-tests": "tsc -b tsconfig.test.json",
     "watch-tests": "tsc -b tsconfig.test.json --watch",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.unit.json --noEmit && tsc -p tsconfig.test.json --noEmit",

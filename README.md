@@ -128,6 +128,21 @@ Unit tests live in `src/test/*.test.ts` and run under Vitest. Tests that need th
 VS Code extension host are named `*.integration.test.ts` and run under
 `@vscode/test-cli`.
 
+### Releasing
+
+Bump `package.json` and add the matching `## [<version>]` heading to
+`CHANGELOG.md`, then:
+
+```bash
+pnpm run release                     # checks + publish
+pnpm run publish:pre-release         # publish as a pre-release
+pnpm run package:vsix                # build the .vsix only
+```
+
+`release` runs `fmt:check`, `lint`, `typecheck`, and the unit tests first. `vsce`
+triggers `vscode:prepublish`, so both publish commands build before uploading. Set
+`VSCE_PAT`, or sign in once with `pnpm dlx @vscode/vsce login Reset0`.
+
 ## Contributing
 
 Issues and pull requests are welcome at
