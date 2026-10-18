@@ -18,8 +18,9 @@ review and edit every message before anything is written to git.
   land in several commits.
 - **Review before writing** — every message and unit assignment is editable; nothing is
   committed until you press **Commit**.
-- **Bring your own model** — OpenAI, Anthropic, or any OpenAI-compatible endpoint such
-  as Ollama, vLLM, DeepSeek, OpenRouter, or LM Studio.
+- **Bring your own model** — OpenAI, Anthropic, any OpenAI-compatible endpoint such
+  as Ollama, vLLM, DeepSeek, OpenRouter, or LM Studio, or a model that VS Code already
+  provides (GitHub Copilot Chat, or a provider added with **Chat: Manage Models**).
 - **Safe by default** — commits are written through a temporary index and a
   compare-and-swap ref update; a failure leaves HEAD where it was.
 - **Live progress** — streamed responses, elapsed time, and a Cancel button that stops
@@ -70,6 +71,14 @@ Patchwork uses one of:
 | OpenAI            | `patchwork.llm.model` + API key                                                                                 |
 | Anthropic         | `patchwork.llm.model` + API key                                                                                 |
 | OpenAI-compatible | `patchwork.llm.model`, `patchwork.llm.baseURL`, API key, optional `chat-completions` or `responses` wire format |
+| VS Code           | `patchwork.llm.model` (empty uses the first available model), no API key                                        |
+
+The `vscode-lm` provider asks VS Code for a model through the Language Model API.
+That covers GitHub Copilot Chat and any provider registered with VS Code under
+**Chat: Manage Models** (including local models), so Patchwork never reads or stores
+a key for it. The first generation shows VS Code's access consent dialog. Models
+expose a limited input window, and Patchwork rejects a selection that does not fit
+with a message naming the token counts.
 
 `patchwork.llm.idleTimeoutSeconds` controls how long the host waits for the next
 chunk before giving up (default 120).

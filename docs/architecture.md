@@ -12,6 +12,7 @@ src/
     git.ts                 reads + commit writing
     config.ts              LLM configuration
     llm.ts                 provider-agnostic generation
+    vscode-lm.ts           VS Code model service + pure helpers
     secret.ts, log.ts, repository.ts, vscode.ts
   infrastructure/         Effect layers backed by VS Code / git / Node
   features/
@@ -72,6 +73,24 @@ Every chunk resets an idle timer (`patchwork.llm.idleTimeoutSeconds`, default 12
 so total runtime is unbounded while output keeps flowing. The host forwards throttled
 `llm.progress` notifications and aborts the provider request on `llm.cancelGenerate`
 or when the panel closes.
+
+### VS Code models
+
+The `vscode-lm` provider is not another `@tanstack/ai` adapter. `services/vscode-lm.ts`
+declares `VscodeLmService` (model listing plus one text generation) and the pure
+helpers around it; `infrastructure/vscode-lm-live.ts` implements that service as a
+layer over `vscode.lm`. `LLMService` and `LLMConfigService` depend on the service, so
+the rest of the host never calls the VS Code API directly. VS Code owns the account
+and the quota, so no API key is read.
+
+The API has no system role and no structured-output mode, so `services/vscode-lm.ts`
+folds system prompts into the first user turn and the caller takes the text-JSON path.
+The same idle-timeout and cancellation scope wraps this provider: an `AbortSignal` is
+bridged to a `CancellationToken`, and every streamed `LanguageModelTextPart` resets the
+timer (the timer is paused while VS Code's access consent dialog is open, so reading it
+cannot trip the timeout). Before sending, the adapter compares the tokenised
+conversation with `LanguageModelChat.maxInputTokens` and fails with
+`LLMContextLimitError` when the diff cannot fit.
 
 ## Commit writer
 
