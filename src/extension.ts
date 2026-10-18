@@ -4,6 +4,7 @@ import { GitServiceLive } from "./infrastructure/git-live";
 import { LoggerServiceLive } from "./infrastructure/log-live";
 import { LLMConfigServiceLive } from "./infrastructure/config-live";
 import { LLMServiceLive } from "./infrastructure/llm-live";
+import { VscodeLmServiceLive } from "./infrastructure/vscode-lm-live";
 import { RepositoryServiceLive } from "./infrastructure/repository-live";
 import {
   createHostClient,
@@ -31,14 +32,15 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(logger);
 
   const secretLayer = SecretServiceLive(context);
+  const llmDependencies = Layer.merge(secretLayer, VscodeLmServiceLive);
 
   const AppLive = Layer.mergeAll(
     LoggerServiceLive(logger),
     secretLayer,
     RepositoryServiceLive(git),
     GitServiceLive(git.git.path),
-    LLMServiceLive.pipe(Layer.provide(secretLayer)),
-    LLMConfigServiceLive.pipe(Layer.provide(secretLayer)),
+    LLMServiceLive.pipe(Layer.provide(llmDependencies)),
+    LLMConfigServiceLive.pipe(Layer.provide(llmDependencies)),
   );
   const runtime = ManagedRuntime.make(AppLive);
 

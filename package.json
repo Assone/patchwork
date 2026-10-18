@@ -123,15 +123,16 @@
             "enum": [
               "openai",
               "anthropic",
-              "openai-compatible"
+              "openai-compatible",
+              "vscode-lm"
             ],
             "default": "openai",
-            "markdownDescription": "Which LLM provider to call. `openai-compatible` covers any endpoint that speaks the OpenAI wire format (Ollama, vLLM, DeepSeek, OpenRouter, Groq, LM Studio, Azure OpenAI)."
+            "markdownDescription": "Which LLM provider to call. `vscode-lm` uses a model that VS Code already provides — GitHub Copilot Chat, or any provider added under **Chat: Manage Models** — so Patchwork never stores an API key for it. `openai-compatible` covers any endpoint that speaks the OpenAI wire format (Ollama, vLLM, DeepSeek, OpenRouter, Groq, LM Studio, Azure OpenAI)."
           },
           "patchwork.llm.model": {
             "type": "string",
             "default": "",
-            "markdownDescription": "Model id for the chosen provider, e.g. `gpt-4o`, `claude-sonnet-4-5`, `qwen2.5-coder:7b`."
+            "markdownDescription": "Model id for the chosen provider, e.g. `gpt-4o`, `claude-sonnet-4-5`, `qwen2.5-coder:7b`. For `vscode-lm`, a VS Code model id, family, or name; leave empty to use the first available model."
           },
           "patchwork.llm.baseURL": {
             "type": "string",
