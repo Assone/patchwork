@@ -1,7 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo } from "react";
 import { useFocusedFileDiff } from "../hooks/useFocusedFileDiff";
-import { useLLMConfigured } from "../hooks/useLLMConfigured";
 import { useComposerState } from "../composer-context";
 import { useSubmissionContext } from "../submission-context";
 import { buttonClassName } from "../components/Button";
@@ -11,6 +10,7 @@ import { SelectionHeader } from "../components/SelectionHeader";
 import { useFocus } from "../hooks/useFocus";
 import { ConfiguredComposer, UnconfiguredComposer } from "../components/composer/Composer";
 import { WaitingScreen } from "../components/WaitingScreen";
+import { useLLMConfigured } from "../hooks/useLLMConfig";
 
 /**
  * `/` — the composer: message textarea + Generate Commit button.

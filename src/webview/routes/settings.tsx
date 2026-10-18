@@ -150,7 +150,7 @@ function SettingsForm({ snapshot, writer }: SettingsFormProps) {
 
         <Section
           title="Provider"
-          description="The model id is passed through unchanged. Endpoint and wire format apply to OpenAI-compatible providers."
+          description="The model id is passed through unchanged. VS Code models come from GitHub Copilot Chat or from providers added with “Chat: Manage Models”; Patchwork never stores a key for them."
         >
           <SelectField<LLMProvider>
             label="Provider"
@@ -160,16 +160,44 @@ function SettingsForm({ snapshot, writer }: SettingsFormProps) {
               { value: "openai", label: "OpenAI" },
               { value: "anthropic", label: "Anthropic" },
               { value: "openai-compatible", label: "OpenAI-compatible" },
+              { value: "vscode-lm", label: "VS Code (Copilot or built-in models)" },
             ]}
             onCommit={(provider) => save({ provider }).then(() => undefined)}
           />
-          <TextField
-            label="Model id"
-            name="model"
-            value={snapshot.model}
-            placeholder="e.g. gpt-4o, claude-sonnet-4-5…"
-            onCommit={(model) => save({ model }).then(() => undefined)}
-          />
+          {snapshot.provider === "vscode-lm" ? (
+            <>
+              <SelectField<string>
+                label="Model"
+                name="model"
+                value={snapshot.model}
+                options={[
+                  { value: "", label: "Auto (first available)" },
+                  ...(snapshot.vscodeModels ?? []).map((model) => ({
+                    value: model.id,
+                    label: `${model.name} · ${model.vendor} · ${Math.round(model.maxInputTokens / 1000)}k ctx`,
+                  })),
+                ]}
+                onCommit={(model) => save({ model }).then(() => undefined)}
+              />
+              {(snapshot.vscodeModels ?? []).length === 0 && (
+                <p
+                  className="text-[11px] leading-snug"
+                  style={{ color: "var(--color-badge-deleted)" }}
+                >
+                  No VS Code language model is available. Install GitHub Copilot Chat, or run “Chat:
+                  Manage Models” to add one.
+                </p>
+              )}
+            </>
+          ) : (
+            <TextField
+              label="Model id"
+              name="model"
+              value={snapshot.model}
+              placeholder="e.g. gpt-4o, claude-sonnet-4-5…"
+              onCommit={(model) => save({ model }).then(() => undefined)}
+            />
+          )}
           {snapshot.provider === "openai-compatible" && (
             <>
               <TextField
@@ -195,18 +223,20 @@ function SettingsForm({ snapshot, writer }: SettingsFormProps) {
           )}
         </Section>
 
-        <Section
-          title="API key"
-          description="Stored in VS Code's encrypted secret storage. It is never shown again."
-        >
-          <ApiKeyField
-            key={snapshot.provider}
-            provider={snapshot.provider}
-            present={snapshot.apiKeyPresent}
-            onSet={setApiKey}
-            onClear={clearApiKey}
-          />
-        </Section>
+        {snapshot.provider !== "vscode-lm" && (
+          <Section
+            title="API key"
+            description="Stored in VS Code's encrypted secret storage. It is never shown again."
+          >
+            <ApiKeyField
+              key={snapshot.provider}
+              provider={snapshot.provider}
+              present={snapshot.apiKeyPresent}
+              onSet={setApiKey}
+              onClear={clearApiKey}
+            />
+          </Section>
+        )}
       </div>
     </div>
   );

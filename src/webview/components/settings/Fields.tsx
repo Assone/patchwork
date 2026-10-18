@@ -40,12 +40,23 @@ export function Section({
   );
 }
 
+const PROVIDER_LABELS: Readonly<Record<LLMConfigView["provider"], string>> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  "openai-compatible": "OpenAI-compatible",
+  "vscode-lm": "VS Code",
+};
+
 export function StatusPanel({ snapshot }: { readonly snapshot: LLMConfigView }) {
-  const parts: string[] = [snapshot.provider];
+  const native = snapshot.provider === "vscode-lm";
+  const models = snapshot.vscodeModels ?? [];
+  const parts: string[] = [PROVIDER_LABELS[snapshot.provider]];
   if (snapshot.model.length > 0) {
     parts.push(snapshot.model);
+  } else if (native) {
+    parts.push("auto");
   }
-  if (snapshot.baseURL !== undefined && snapshot.baseURL.length > 0) {
+  if (!native && snapshot.baseURL !== undefined && snapshot.baseURL.length > 0) {
     parts.push(snapshot.baseURL);
   }
 
@@ -68,11 +79,21 @@ export function StatusPanel({ snapshot }: { readonly snapshot: LLMConfigView }) 
       {parts.join(" · ")}
       {!snapshot.configured && (
         <div className="mt-1 text-[10px] opacity-80">
-          {snapshot.model.length === 0 && "Set a model id. "}
-          {snapshot.provider === "openai-compatible" &&
-            (snapshot.baseURL ?? "").length === 0 &&
-            "Set a baseURL. "}
-          {!snapshot.apiKeyPresent && "Set an API key. "}
+          {native ? (
+            models.length === 0 ? (
+              "No VS Code language model is available. "
+            ) : (
+              "Pick a model that is still available. "
+            )
+          ) : (
+            <>
+              {snapshot.model.length === 0 && "Set a model id. "}
+              {snapshot.provider === "openai-compatible" &&
+                (snapshot.baseURL ?? "").length === 0 &&
+                "Set a baseURL. "}
+              {!snapshot.apiKeyPresent && "Set an API key. "}
+            </>
+          )}
         </div>
       )}
     </div>
