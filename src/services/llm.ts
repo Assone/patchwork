@@ -19,6 +19,16 @@ export type LLMModelSpec =
       readonly model: string;
       readonly baseURL: string;
       readonly api?: CompatibleApi;
+    }
+  | {
+      /**
+       * A model VS Code hosts itself: GitHub Copilot Chat, or a provider
+       * the user added under **Chat: Manage Models**. Patchwork never sees
+       * an API key for these; VS Code owns the account and the quota.
+       */
+      readonly provider: "vscode-lm";
+      /** An `id`, `family`, or `name`; empty means "first available". */
+      readonly model: string;
     };
 
 export class LLMAuthenticationError extends Data.TaggedError("LLMAuthenticationError")<{
@@ -52,6 +62,21 @@ export class LLMCancelledError extends Data.TaggedError("LLMCancelledError")<{
 
 export class LLMUnknownProviderError extends Data.TaggedError("LLMUnknownProviderError")<{
   readonly provider: string;
+}> {}
+
+/**
+ * The conversation does not fit the model's input window.
+ *
+ * `vscode.lm` reports `LanguageModelChat.maxInputTokens`, and the whole
+ * diff is sent in one request, so a small local model can be asked to
+ * read more than it can hold. Detecting that up front turns an opaque
+ * provider failure into a "select fewer files" instruction.
+ */
+export class LLMContextLimitError extends Data.TaggedError("LLMContextLimitError")<{
+  readonly provider: LLMProvider;
+  readonly model: string;
+  readonly tokens: number;
+  readonly limit: number;
 }> {}
 
 export class LLMGenerateError extends Data.TaggedError("LLMGenerateError")<{
@@ -105,6 +130,7 @@ export interface LLMServiceApi {
     | LLMTimeoutError
     | LLMCancelledError
     | LLMUnknownProviderError
+    | LLMContextLimitError
   >;
 
   /**
@@ -113,7 +139,8 @@ export interface LLMServiceApi {
    * When an adapter has no `structuredOutputStream`, `@tanstack/ai`
    * silently falls back to a *non-streaming* call and emits the whole
    * reply at once. Callers that want incremental progress should skip
-   * the schema and ask for streamed text JSON instead.
+   * the schema and ask for streamed text JSON instead. `vscode.lm` has
+   * no schema mode at all, so it also returns text JSON.
    */
   readonly streamsStructuredOutput: (model: LLMModelSpec) => boolean;
 }
@@ -232,6 +259,16 @@ export const toLLMGenerateError = (cause: unknown): LLMGenerateError => {
       reason: "provider",
       message: `LLM provider (${cause.provider}) returned an error: ${detail}${providerHint(detail)}`,
       cause: cause.cause,
+    });
+  }
+  if (cause instanceof LLMContextLimitError) {
+    return new LLMGenerateError({
+      reason: "unknown",
+      message:
+        `The selected change is about ${cause.tokens.toLocaleString("en-US")} tokens, but ` +
+        `${cause.model} accepts at most ${cause.limit.toLocaleString("en-US")} input tokens. ` +
+        "Select fewer files or choose a model with a larger context window.",
+      cause,
     });
   }
   if (cause instanceof LLMUnknownProviderError) {
