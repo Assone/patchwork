@@ -171,18 +171,22 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
         );
 
       if (structured.ok) {
-        const proposal = extractProposal(structured.value.value);
+        // The adapter normally returns the parsed object, but a streamed
+        // structured reply can arrive as raw JSON only. Never throw away
+        // a reply that is still parseable.
+        const proposal =
+          extractProposal(structured.value.value) ?? extractProposal(structured.value.text);
         if (proposal !== null) {
           const result = buildPlan(translateProposal(proposal, units), units);
           if (result.validation.valid) {
             return result.plan;
           }
           validationMessage = toModelIds(result.validation.message, units);
-          log.debug(`structured plan invalid: ${validationMessage}`);
+          log.warn(`structured plan invalid: ${validationMessage}`);
         } else {
           validationMessage = `the reply did not match the expected shape (${describeShape(structured.value.value)})`;
           textOnlyEndpoints.add(key);
-          log.debug(`structured output unusable for ${key}: ${validationMessage}`);
+          log.warn(`structured output unusable for ${key}: ${validationMessage}`);
         }
       } else {
         // A timeout or cancellation is a reason to stop, not to start a
@@ -197,9 +201,9 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
         validationMessage = structured.error.message;
         if (shouldDisableStructured(validationMessage)) {
           textOnlyEndpoints.add(key);
-          log.debug(`disabling structured output for ${key}`, structured.error.cause);
+          log.warn(`disabling structured output for ${key}`, structured.error.cause);
         } else {
-          log.debug(
+          log.warn(
             `structured call failed, falling back to text: ${validationMessage}`,
             structured.error.cause,
           );
@@ -213,6 +217,15 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
     const MAX_TEXT_ATTEMPTS = 2;
     let feedback = validationMessage;
     let lastReply: string | undefined;
+
+    /** A second request is about to be made; say so in the output channel. */
+    const noteRetry = (attempt: number): void => {
+      if (attempt < MAX_TEXT_ATTEMPTS) {
+        log.warn(
+          `retrying with the validation feedback (attempt ${attempt + 1}/${MAX_TEXT_ATTEMPTS})`,
+        );
+      }
+    };
 
     for (let attempt = 1; attempt <= MAX_TEXT_ATTEMPTS; attempt += 1) {
       const textAttempt = yield* llm
@@ -253,6 +266,7 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
         log.error(
           `model reply was not recoverable JSON (attempt ${attempt}): ${preview(text.text)}`,
         );
+        noteRetry(attempt);
         continue;
       }
 
@@ -263,6 +277,7 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
 
       feedback = toModelIds(result.validation.message, units);
       log.error(`model plan was invalid (attempt ${attempt}): ${feedback}`);
+      noteRetry(attempt);
     }
 
     return yield* Effect.fail(

@@ -1,7 +1,7 @@
 {
   "name": "patchwork-commit-composer",
   "displayName": "Patchwork — AI Commit Composer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Split one large change into small, meaningful commits. Patchwork groups changed hunks with an LLM, writes commit messages, and lets you review every commit before it touches git.",
   "categories": [
     "AI",

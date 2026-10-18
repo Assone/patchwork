@@ -43,6 +43,21 @@ describe("consumeStream", () => {
     assert.strictEqual(progress.at(-1)?.receivedChars, result.text.length);
   });
 
+  test("keeps the streamed JSON when the terminal event has no raw text", async () => {
+    const result = await consumeStream({
+      open: streamOf([
+        { type: "TEXT_MESSAGE_CONTENT", delta: '{"commits":' },
+        { type: "TEXT_MESSAGE_CONTENT", delta: "[]}" },
+        { type: "CUSTOM", name: "structured-output.complete", value: { object: undefined } },
+      ]),
+      structured: true,
+      touch: () => {},
+    });
+
+    assert.strictEqual(result.text, '{"commits":[]}');
+    assert.strictEqual(result.value, undefined);
+  });
+
   test("concatenates text deltas when no schema is requested", async () => {
     const result = await consumeStream({
       open: streamOf([

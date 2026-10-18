@@ -46,6 +46,11 @@ export const consumeStream = async (
 ): Promise<ConsumeStreamResult> => {
   let receivedChars = 0;
   let text = "";
+  // Every text delta, independent of the final event. In structured mode
+  // the deltas are the partial JSON, and some adapters emit them without
+  // a usable `raw` on the terminal event; keeping them lets the caller
+  // recover a reply that would otherwise be discarded.
+  let streamed = "";
   let value: unknown;
   let structuredComplete = false;
 
@@ -70,11 +75,11 @@ export const consumeStream = async (
       receivedChars += delta.length;
       // `TEXT_MESSAGE_CONTENT` is the documented delta event;
       // `TEXT_MESSAGE_CHUNK` is the AG-UI 1.0 shorthand some adapters use.
-      if (
-        !options.structured &&
-        (chunk.type === "TEXT_MESSAGE_CONTENT" || chunk.type === "TEXT_MESSAGE_CHUNK")
-      ) {
-        text += delta;
+      if (chunk.type === "TEXT_MESSAGE_CONTENT" || chunk.type === "TEXT_MESSAGE_CHUNK") {
+        streamed += delta;
+        if (!options.structured) {
+          text += delta;
+        }
       }
       report();
     }
@@ -84,7 +89,7 @@ export const consumeStream = async (
         | { readonly object?: unknown; readonly raw?: string }
         | undefined;
       value = payload?.object;
-      text = payload?.raw ?? text;
+      text = payload?.raw !== undefined && payload.raw.length > 0 ? payload.raw : streamed;
       receivedChars = Math.max(receivedChars, text.length);
       structuredComplete = true;
       report();

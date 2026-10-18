@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-18
+
+### Fixed
+
+- A streamed structured reply is no longer discarded when the terminal event carries
+  no raw text; the streamed JSON is used as a fallback. Falling back to text mode or
+  retrying is now logged at warning level instead of silently issuing a second request.
+
 ## [0.1.0] - 2026-10-18
 
 ### Added
