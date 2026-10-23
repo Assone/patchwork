@@ -16,7 +16,8 @@ import { LoggerService, type LoggerServiceApi } from "../../services/log";
 import { describeDiagnosis, diagnoseProposal } from "./diagnose";
 import { buildPlan } from "./plan";
 import { buildMessages, describePrompt, jsonInstruction, PromptTooLargeError } from "./prompt";
-import { describeShape, extractProposal, preview } from "./proposal";
+import { inspectProposal, preview } from "./proposal";
+
 import { CommitPlanSchema } from "./schema";
 import { buildUnits, type ComposeUnit } from "./units";
 import { toModelIds, translateProposal } from "./aliases";
@@ -51,6 +52,27 @@ const clip = (text: string, max: number): string =>
 
 const fail = (message: string, cause?: unknown): LLMGenerateError =>
   new LLMGenerateError({ reason: "unknown", message, ...(cause === undefined ? {} : { cause }) });
+
+/**
+ * What to tell the model about a reply that could not be used.
+ *
+ * The two failures need different corrections: unparseable text needs
+ * JSON, a well-formed reply with the wrong keys needs the shape. Saying
+ * "not parseable JSON" about a perfectly valid reply sent the retry (and
+ * the user) looking for a syntax error that was not there.
+ */
+const describeRejection = (
+  inspection: {
+    readonly ok: false;
+    readonly rejection: "not-json" | "shape";
+    readonly found: string;
+  },
+  text: string,
+): string =>
+  inspection.rejection === "not-json"
+    ? `the reply was not parseable JSON (it started with: ${preview(text)})`
+    : `the reply was valid JSON but did not match the expected shape (found ${inspection.found}); ` +
+      'the unit ids must be listed under "hunkIds"';
 
 export const generateCommits = (
   input: GenerateCommitsInput,
@@ -207,9 +229,10 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
         // The adapter normally returns the parsed object, but a streamed
         // structured reply can arrive as raw JSON only. Never throw away
         // a reply that is still parseable.
-        const proposal =
-          extractProposal(structured.value.value) ?? extractProposal(structured.value.text);
-        if (proposal !== null) {
+        const fromValue = inspectProposal(structured.value.value);
+        const inspection = fromValue.ok ? fromValue : inspectProposal(structured.value.text);
+        if (inspection.ok) {
+          const proposal = inspection.proposal;
           const result = buildPlan(translateProposal(proposal, units), units);
           if (result.validation.valid) {
             return result.plan;
@@ -223,7 +246,7 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
           );
           log.debug(`raw structured reply: ${clip(structured.value.text, 4000)}`);
         } else {
-          validationMessage = `the reply did not match the expected shape (${describeShape(structured.value.value)})`;
+          validationMessage = describeRejection(inspection, structured.value.text);
           textOnlyEndpoints.add(key);
           log.warn(`structured output unusable for ${key}: ${validationMessage}`);
         }
@@ -299,16 +322,15 @@ const draftPlan = ({ llm, log, spec, messages, units, abortSignal, onProgress }:
 
       const text = textAttempt.value;
       lastReply = text.text;
-      const proposal = extractProposal(text.text);
-      if (proposal === null) {
-        feedback = `the reply was not parseable JSON (it started with: ${preview(text.text)})`;
-        log.error(
-          `model reply was not recoverable JSON (attempt ${attempt}): ${preview(text.text)}`,
-        );
+      const inspection = inspectProposal(text.text);
+      if (!inspection.ok) {
+        feedback = describeRejection(inspection, text.text);
+        log.error(`model reply was unusable (attempt ${attempt}): ${feedback}`);
         noteRetry(attempt);
         continue;
       }
 
+      const proposal = inspection.proposal;
       const result = buildPlan(translateProposal(proposal, units), units);
       if (result.validation.valid) {
         return result.plan;
