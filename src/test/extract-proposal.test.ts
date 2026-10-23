@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { describe, test } from "vitest";
-import { extractProposal } from "../features/llm-compose";
+import { extractProposal, inspectProposal } from "../features/llm-compose";
 
 const valid = {
   commits: [
@@ -52,5 +52,61 @@ describe("extractProposal", () => {
 
   test("refuses an empty commit list", () => {
     assert.strictEqual(extractProposal({ commits: [] }), null);
+  });
+});
+
+describe("inspectProposal", () => {
+  test("accepts `units` as an alias for `hunkIds`", () => {
+    // The model answers in the prompt's vocabulary; a key name is not a
+    // reason to throw the whole plan away.
+    const parsed = extractProposal({
+      commits: [{ message: "feat(x): y", units: ["u1", "u2"] }],
+    });
+
+    assert.ok(parsed);
+    assert.deepStrictEqual(parsed.commits[0]?.hunkIds, ["u1", "u2"]);
+  });
+
+  test("accepts a text reply that uses `units`", () => {
+    const text = JSON.stringify({
+      commits: [{ message: "feat(x): y", units: ["u1"] }],
+    });
+
+    const parsed = extractProposal(text);
+    assert.ok(parsed);
+    assert.deepStrictEqual(parsed.commits[0]?.hunkIds, ["u1"]);
+  });
+
+  test("tells unparseable text apart from a well-formed reply with the wrong shape", () => {
+    const notJson = inspectProposal("I'd rather not guess at the partitioning.");
+    assert.strictEqual(notJson.ok, false);
+    assert.strictEqual(notJson.ok === false && notJson.rejection, "not-json");
+
+    const wrongShape = inspectProposal(JSON.stringify({ commits: [{ message: "chore: x" }] }));
+    assert.strictEqual(wrongShape.ok, false);
+    assert.strictEqual(wrongShape.ok === false && wrongShape.rejection, "shape");
+  });
+
+  test("a valid plan is reported as such", () => {
+    const inspection = inspectProposal(valid);
+    assert.strictEqual(inspection.ok, true);
+    assert.deepStrictEqual(inspection.ok === true && inspection.proposal, valid);
+  });
+
+  test("recovers a body written with real newlines instead of escapes", () => {
+    // A body needs a blank line, and models often write that literally.
+    // One stray newline should not cost the whole plan.
+    const text = [
+      '{"commits":[{"message":"fix(commit): keep the index in sync',
+      "",
+      'Applying the remaining hunks failed when a file had already been staged.",',
+      '"hunkIds":["u1"]}]}',
+    ].join("\n");
+
+    const parsed = extractProposal(text);
+    assert.ok(parsed);
+    assert.match(parsed.commits[0]?.message ?? "", /fix\(commit\)/);
+    assert.match(parsed.commits[0]?.message ?? "", /already been staged/);
+    assert.deepStrictEqual(parsed.commits[0]?.hunkIds, ["u1"]);
   });
 });
