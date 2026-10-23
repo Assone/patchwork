@@ -95,6 +95,27 @@ describe("model-facing unit aliases", () => {
     assert.match(jsonInstruction("hunks not assigned: u1"), /previous reply was invalid/);
   });
 
+  test("the prompt's output format names the key the plan schema expects", () => {
+    // The prompt and the schema must agree on the key: a reply that says
+    // "units" where the schema says "hunkIds" fails validation, and the
+    // plan is thrown away for a spelling.
+    const prompt = buildMessages("", units)[0]?.content ?? "";
+
+    assert.match(prompt, /"hunkIds": \["u1", "u3"\]/);
+    assert.doesNotMatch(prompt, /"units":/);
+    assert.match(jsonInstruction(""), /"hunkIds":\["u1","u2"\]/);
+  });
+
+  test("the prompt asks for a body when the change shows a reason", () => {
+    // Without this, the model writes a subject line and nothing else:
+    // a rewrite of the prompt dropped the body example and the bodies
+    // stopped coming.
+    const prompt = buildMessages("", units)[0]?.content ?? "";
+
+    assert.match(prompt, /body is expected/i);
+    assert.match(prompt, /blank line/);
+  });
+
   /** A change set whose diff genuinely exceeded the old 128 KiB budget. */
   const oversized = () => {
     const paths = Array.from({ length: 8 }, (_, index) => `big${index}.txt`);
